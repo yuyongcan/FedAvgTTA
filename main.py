@@ -34,7 +34,7 @@ def get_args():
                         choices=[x.value for x in ThreatModel])
     parser.add_argument('--dataset',
                         type=str,
-                        default='cifar100',
+                        default='imagenet',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
     parser.add_argument('--algorithm', default='tent', type=str,
@@ -56,7 +56,7 @@ def get_args():
     parser.add_argument('--if_shuffle', default=True, type=bool, help='if shuffle the test set.')
 
     # model parameters
-    parser.add_argument('--arch', default='vit_base_patch16_224', choices=['Standard_R50','vit_base_patch16_224','visformer_small'],type=str, help='the default model architecture')
+    parser.add_argument('--arch', default='Standard_R50', choices=['Standard_R50','vit_base_patch16_224','visformer_small'],type=str, help='the default model architecture')
 
     # experiment mode setting
     # parser.add_argument('--exp_type', default='full', type=str,
@@ -99,7 +99,7 @@ def get_args():
     # parser.add_argument('--ap', type=float, default=0.92)
 
     #FL parameters
-    parser.add_argument('--local_batches', default=20, type=int, help='corruption level of test(val) set.')
+    parser.add_argument('--local_batches', default=50, type=int, help='corruption level of test(val) set.')
     return parser.parse_args()
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ from robustbench.model_zoo.enums import ThreatModel
 from robustbench.utils import load_model
 import tent
 import timm
+from .data import load_imagenet_c
 
 logger = logging.getLogger(__name__)
 
@@ -62,15 +63,15 @@ class Server(object):
         if args.dataset == 'imagenet':
             # args.arch = 'Standard_R50'
             args.data_dir = '/data/yongcan.yu/datasets'
+            self.num_rounds = 50000 // args.batch_size // args.local_batches + 1
         elif args.dataset in ['cifar10', 'cifar100']:
             args.data_dir = './data'
             if args.dataset == 'cifar10':
                 args.arch = 'Standard'
-                self.num_rounds = 10000 // args.batch_size // args.local_batches
+                self.num_rounds = 10000 // args.batch_size // args.local_batches + 1
             elif args.dataset == 'cifar100':
                 args.arch = 'Hendrycks2020AugMix_ResNeXt'
-                self.num_rounds = 10000 // args.batch_size // args.local_batches
-
+                self.num_rounds = 10000 // args.batch_size // args.local_batches + 1
 
         if args.arch in ['visformer_small', 'vit_base_patch16_224']:
             subnet = timm.create_model(args.arch, pretrained=True)
@@ -93,14 +94,12 @@ class Server(object):
         self.seed = args.seed
         self.device = args.gpu
 
-
         self.data_path = args.data_dir
         self.dataset_name = args.dataset
 
         self.num_clients = len(args.common_corruptions)
         self.local_batch_nums = args.local_batches
         self.batch_size = args.batch_size
-
 
         self.args = args
 
@@ -122,7 +121,7 @@ class Server(object):
         gc.collect()
 
         # split local dataset for each client
-        local_datasets = create_datasets(self.data_path, self.dataset_name, self.num_clients, self.args)
+        local_datasets = create_datasets(self.args)
 
         # assign dataset to each client
         self.clients = self.create_clients(local_datasets)
@@ -163,7 +162,7 @@ class Server(object):
 
         # send the global model to all clients before the very first and after the last federated round
         # assert (self._round == 0) or (self._round == self.num_rounds)
-        client_0_model=copy.deepcopy(self.clients[0].adapt_model)
+        client_0_model = copy.deepcopy(self.clients[0].adapt_model)
 
         for client in tqdm(self.clients, leave=False):
             client.adapt_model = copy.deepcopy(self.adapt_model)
@@ -188,8 +187,6 @@ class Server(object):
             np.random.choice(a=[i for i in range(self.num_clients)], size=num_sampled_clients, replace=False).tolist())
 
         return sampled_client_indices
-
-
 
     def average_model(self, coefficients):
         """Average the updated and transmitted parameters from each selected client."""
@@ -219,11 +216,10 @@ class Server(object):
         """Call "client_evaluate" function of each selected client."""
 
         for idx in range(len(self.clients)):
-            acc=self.clients[idx].client_evaluate()
+            acc = self.clients[idx].client_evaluate()
             message = f"[Round: {str(self._round).zfill(4)}] ...evaluate weights of {idx} clients are successfully averaged! acc:{acc:.2f}%"
             print(message);
             logging.info(message)
-
 
     def train_federated_model(self):
         """Do federated training."""
@@ -236,11 +232,10 @@ class Server(object):
         self.evaluate_selected_models()
 
         # calculate averaging coefficient of weights
-        mixing_coefficients = [1./len(self.clients) for i in range(len(self.clients))]
+        mixing_coefficients = [1. / len(self.clients) for i in range(len(self.clients))]
 
         # average each updated model parameters of the selected clients and update the global model
         self.average_model(mixing_coefficients)
-
 
     def fit(self):
         """Execute the whole process of the federated learning."""

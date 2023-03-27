@@ -6,11 +6,13 @@ import torch
 import torch.nn as nn
 import torch.nn.init as init
 
+
 from torch.utils.data import Dataset, TensorDataset, ConcatDataset
 from torchvision import datasets, transforms
 import torchvision
 
 from robustbench.data import load_imagenetc, load_cifar10c, load_cifar100c
+from src.data import load_imagenet_c
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +103,7 @@ class CustomTensorDataset(Dataset):
     def __len__(self):
         return self.tensors[0].size(0)
 
-def create_datasets(data_path, dataset_name, num_clients, args):
+def create_datasets(args):
     """Split the whole dataset in IID or non-IID manner for distributing to clients."""
 
     local_datasets=[]
@@ -116,5 +118,8 @@ def create_datasets(data_path, dataset_name, num_clients, args):
                                            args.severity, args.data_dir, args.if_shuffle,
                                            [corruption_type])
             local_datasets.append(CustomTensorDataset((x_test, y_test)))
+        if args.dataset == 'imagenet':
+            dataset, _ = load_imagenet_c(args, corruption_type, args.severity)
+            local_datasets.append(dataset)
 
     return local_datasets

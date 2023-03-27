@@ -154,9 +154,7 @@ def load_imagenetc(
     transforms_test = PREPROCESSINGS[prepr]
 
     assert len(corruptions) == 1, "so far only one corruption is supported (that's how this function is called in eval.py"
-    # TODO: generalize this (although this would probably require writing a function similar to `load_corruptions_cifar`
-    #  or alternatively creating yet another CustomImageFolder class that fetches images from multiple corruption types
-    #  at once -- perhaps this is a cleaner solution)
+
 
     data_folder_path = Path(data_dir) / CORRUPTIONS_DIR_NAMES[BenchmarkDataset.imagenet] / corruptions[0] / str(severity)
     imagenet = CustomImageFolder(data_folder_path, transforms_test)

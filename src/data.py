@@ -171,7 +171,7 @@ def load_imagenetc(
 
     assert len(
         corruptions) == 1, "so far only one corruption is supported (that's how this function is called in eval.py"
-   
+
 
     data_folder_path = Path(data_dir) / CORRUPTIONS_DIR_NAMES[BenchmarkDataset.imagenet] / corruptions[0] / str(
         severity)

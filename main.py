@@ -34,7 +34,7 @@ def get_args():
                         choices=[x.value for x in ThreatModel])
     parser.add_argument('--dataset',
                         type=str,
-                        default='cifar10',
+                        default='cifar100',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
     parser.add_argument('--algorithm', default='tent', type=str,

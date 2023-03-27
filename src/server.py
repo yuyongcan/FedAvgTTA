@@ -59,10 +59,6 @@ class Server(object):
         self._round = 0
         self.writer = writer
 
-        if args.dataset=='cifar10':
-            self.num_rounds=10000//args.batch_size//args.local_batches
-            args.arch=''
-
         if args.dataset == 'imagenet':
             # args.arch = 'Standard_R50'
             args.data_dir = '/data/yongcan.yu/datasets'
@@ -70,15 +66,17 @@ class Server(object):
             args.data_dir = './data'
             if args.dataset == 'cifar10':
                 args.arch = 'Standard'
+                self.num_rounds = 10000 // args.batch_size // args.local_batches
             elif args.dataset == 'cifar100':
                 args.arch = 'Hendrycks2020AugMix_ResNeXt'
+                self.num_rounds = 10000 // args.batch_size // args.local_batches
 
 
         if args.arch in ['visformer_small', 'vit_base_patch16_224']:
             subnet = timm.create_model(args.arch, pretrained=True)
         else:
             subnet = load_model(args.arch, args.ckpt_dir,
-                                args.dataset, ThreatModel.corruptions).cuda()
+                                args.dataset, ThreatModel.corruptions)
         if args.algorithm == 'tent':
             subnet = tent.configure_model(subnet)
             params, param_names = tent.collect_params(subnet)
@@ -165,6 +163,7 @@ class Server(object):
 
         # send the global model to all clients before the very first and after the last federated round
         # assert (self._round == 0) or (self._round == self.num_rounds)
+        client_0_model=copy.deepcopy(self.clients[0].adapt_model)
 
         for client in tqdm(self.clients, leave=False):
             client.adapt_model = copy.deepcopy(self.adapt_model)
@@ -242,27 +241,6 @@ class Server(object):
         # average each updated model parameters of the selected clients and update the global model
         self.average_model(mixing_coefficients)
 
-    def evaluate_global_model(self):
-        """Evaluate the global model using the global holdout dataset (self.data)."""
-        self.adapt_model.eval()
-        self.adapt_model.to(self.device)
-
-        test_loss, correct = 0, 0
-        with torch.no_grad():
-            for data, labels in self.dataloader:
-                data, labels = data.float().to(self.device), labels.long().to(self.device)
-                outputs = self.adapt_model(data)
-                test_loss += eval(self.criterion)()(outputs, labels).item()
-
-                predicted = outputs.argmax(dim=1, keepdim=True)
-                correct += predicted.eq(labels.view_as(predicted)).sum().item()
-
-                if self.device == "cuda": torch.cuda.empty_cache()
-        self.adapt_model.to("cpu")
-
-        test_loss = test_loss / len(self.dataloader)
-        test_accuracy = correct / len(self.data)
-        return test_loss, test_accuracy
 
     def fit(self):
         """Execute the whole process of the federated learning."""

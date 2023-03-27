@@ -111,6 +111,10 @@ def create_datasets(data_path, dataset_name, num_clients, args):
                                            args.severity, args.data_dir, args.if_shuffle,
                                            [corruption_type])
             local_datasets.append(CustomTensorDataset((x_test,y_test)))
-
+        if args.dataset == 'cifar100':
+            x_test,y_test = load_cifar100c(10000,
+                                           args.severity, args.data_dir, args.if_shuffle,
+                                           [corruption_type])
+            local_datasets.append(CustomTensorDataset((x_test, y_test)))
 
     return local_datasets

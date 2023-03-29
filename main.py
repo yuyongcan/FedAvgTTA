@@ -32,7 +32,7 @@ def get_args():
                         choices=[x.value for x in ThreatModel])
     parser.add_argument('--dataset',
                         type=str,
-                        default='cifar10',
+                        default='cifar100',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
     parser.add_argument('--algorithm', default='cotta', type=str,
@@ -99,6 +99,7 @@ def get_args():
     #FL parameters
     parser.add_argument('--local_batches', default=20, type=int, help='corruption level of test(val) set.')
     parser.add_argument('--Federated', default=True, type=bool, help='Federated test time adaptation or not')
+    parser.add_argument('--dataloder_path', default='./iter_dataloders', type=str, help='the path to save and load fixed dataloders')
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -107,7 +108,7 @@ if __name__ == "__main__":
     args=get_args()
     args.common_corruptions=corruptions
     # modify log_path to contain current time
-    args.log_path = os.path.join(args.output,args.algorithm,str(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")))
+    args.log_path = os.path.join(args.output,args.dataset,args.algorithm,str(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")))
 
     # initiate TensorBaord for tracking losses and metrics
     writer = SummaryWriter(log_dir=args.log_path, filename_suffix="FL")

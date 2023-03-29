@@ -1,13 +1,14 @@
 import gc
 import pickle
 import logging
-
+import os
 import torch
 import torch.nn as nn
 
 from torch.utils.data import DataLoader
 
 from utils.cli_utils import AverageMeter,ProgressMeter
+import pickle
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +31,13 @@ class Client(object):
         device: Training machine indicator (e.g. "cpu", "cuda").
         adapt_model: torch.nn instance as a local model.
     """
-    def __init__(self, client_id, local_data, device):
+    def __init__(self, client_id, local_data, device,args):
         """Client object is initiated by the center server."""
         self.id = client_id
         self.data = local_data
         self.device = device
         self.adapt_model = None
-
+        self.args=args
     @property
     def model(self):
         """Local model getter for parameter aggregation."""
@@ -55,6 +56,18 @@ class Client(object):
         """Set up common configuration of each client; called by center server."""
         self.batch_size=args.batch_size
         self.dataloader = DataLoader(self.data, batch_size=args.batch_size, shuffle=args.if_shuffle)
+
+        # data_load_dir=os.path.join(args.dataloder_path,args.dataset)
+        # data_load_path=os.path.join(args.dataloder_path,args.dataset,str(self.id)+'.pkl')
+        # if os.path.exists(data_load_path):
+        #     self.iter_dataloader=pickle.load(data_load_path)
+        # else:
+        #     self.iter_dataloader = iter(self.dataloader)
+        #     if not os.path.exists(data_load_dir):
+        #         os.makedirs(data_load_dir)
+        #     with open(data_load_path,'wb') as f:
+        #         pickle.dump(self.iter_dataloader,f)
+
         self.iter_dataloader=iter(self.dataloader)
         self.batches_now=0
         self.batches_per_round=args.local_batches

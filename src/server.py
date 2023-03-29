@@ -2,6 +2,7 @@ import copy
 import gc
 import random
 
+import math
 from torch import optim
 from tqdm.auto import tqdm
 from collections import OrderedDict
@@ -12,7 +13,7 @@ from .client import Client
 
 from robustbench.model_zoo.enums import ThreatModel
 from robustbench.utils import load_model
-from methods import tent,cotta
+from methods import tent,cotta,eata
 import timm
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,62 @@ class Server(object):
             adapt_model = cotta.CoTTA(subnet, optimizer,
                                       steps=args.steps,
                                       )
+        elif args.algorithm == 'eata':
+            # parameter setting
+            if args.dataset == 'imagenet':
+                args.e_margin = math.log(1000) * 0.40
+                args.lr = 0.00025 if args.arch == 'Standard_R50' else 0.001
+                args.fisher_alpha = 2000.
+                args.d_margin = 0.05
+            elif args.dataset in ['cifar10', 'cifar100']:
+                args.lr = 0.005
+                args.fisher_alpha = 1. if args.dataset == 'cifar10' else 2000
+                args.d_margin = 0.4
+
+                if args.dataset == 'cifar10':
+                    args.e_margin = math.log(10) * 0.40
+                else:
+                    args.e_margin = math.log(100) * 0.40
+
+            # compute fisher informatrix
+            args.corruption = 'original'
+            args.data = datasets_path[args.dataset]
+            # if args.dataset=='imagenet':
+            #     fisher_dataset, fisher_loader = prepare_test_data(args)
+            #     fisher_dataset.set_dataset_size(args.fisher_size)
+            #     fisher_dataset.switch_mode(True, False)
+            # else:
+            fisher_dataset, fisher_loader = load_val_dataset(args)
+            subnet = eata.configure_model(subnet)
+            params, param_names = eata.collect_params(subnet)
+            ewc_optimizer = torch.optim.SGD(params, 0.001)
+            fishers = {}
+            train_loss_fn = nn.CrossEntropyLoss().cuda()
+            for iter_, (images, targets) in enumerate(fisher_loader, start=1):
+                if args.gpu is not None:
+                    images = images.cuda()
+                if torch.cuda.is_available():
+                    targets = targets.cuda()
+                outputs = subnet(images)
+                _, targets = outputs.max(1)
+                loss = train_loss_fn(outputs, targets)
+                loss.backward()
+                for name, param in subnet.named_parameters():
+                    if param.grad is not None:
+                        if iter_ > 1:
+                            fisher = param.grad.data.clone().detach() ** 2 + fishers[name][0]
+                        else:
+                            fisher = param.grad.data.clone().detach() ** 2
+                        if iter_ == len(fisher_loader):
+                            fisher = fisher / iter_
+                        fishers.update({name: [fisher, param.data.clone().detach()]})
+                ewc_optimizer.zero_grad()
+            logger.info("compute fisher matrices finished")
+            del ewc_optimizer
+
+            optimizer = torch.optim.SGD(params, args.lr, momentum=0.9)
+            adapt_model = eata.EATA(subnet, optimizer, fishers, args.fisher_alpha, e_margin=args.e_margin,
+                                    d_margin=args.d_margin)
         else:
             assert False, NotImplementedError
         self.adapt_model = adapt_model
@@ -193,7 +250,7 @@ class Server(object):
         """Initialize each Client instance."""
         clients = []
         for k, dataset in tqdm(enumerate(local_datasets), leave=False):
-            client = Client(client_id=k, local_data=dataset, device=self.device)
+            client = Client(client_id=k, local_data=dataset, device=self.device,args=self.args)
             clients.append(client)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...successfully created all {str(self.num_clients)} clients!"
@@ -298,7 +355,8 @@ class Server(object):
         # sampled_client_indices = self.sample_clients()
 
         # send global model to the selected clients
-        self.transmit_model()
+        if self.args.Federated:
+            self.transmit_model()
 
         self.evaluate_selected_models()
 
@@ -306,7 +364,9 @@ class Server(object):
         mixing_coefficients = [1. / len(self.clients) for i in range(len(self.clients))]
 
         # average each updated model parameters of the selected clients and update the global model
-        self.average_model(mixing_coefficients)
+        if self.args.Federated:
+            self.average_model(mixing_coefficients)
+
 
     def fit(self):
         """Execute the whole process of the federated learning."""

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from typing import Callable, Dict, Optional, Sequence, Set, Tuple
-
+from dataset.selectedRotateImageFolder import SelectedRotateImageFolder
 import numpy as np
 import torch
 import torch.utils.data as data
@@ -13,7 +13,6 @@ from robustbench.model_zoo.enums import BenchmarkDataset
 from robustbench.zenodo_download import DownloadError, zenodo_download
 from robustbench.loaders import CustomImageFolder
 
-
 PREPROCESSINGS = {
     'Res256Crop224': transforms.Compose([transforms.Resize(256),
                                          transforms.CenterCrop(224),
@@ -23,7 +22,24 @@ PREPROCESSINGS = {
     'none': transforms.Compose([transforms.ToTensor()]),
 }
 
+normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+tr_transforms = transforms.Compose([transforms.RandomResizedCrop(224),
+									transforms.RandomHorizontalFlip(),
+                                    # transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2),
+									transforms.ToTensor(),
+									normalize])
+te_transforms = transforms.Compose([transforms.Resize(256),
+									transforms.CenterCrop(224),
+									transforms.ToTensor(),
+									normalize])
 
+# above transform is from TTT, the below is based on original ImageNet-C.
+te_transforms_imageC = transforms.Compose([transforms.CenterCrop(224),
+									transforms.ToTensor(),
+									normalize])
+
+rotation_tr_transforms = tr_transforms
+rotation_te_transforms = te_transforms
 def _load_dataset(
         dataset: Dataset,
         n_examples: Optional[int] = None) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -79,12 +95,12 @@ def load_imagenet(
         prepr: str = 'Res256Crop224') -> Tuple[torch.Tensor, torch.Tensor]:
     transforms_test = PREPROCESSINGS[prepr]
     imagenet = CustomImageFolder(data_dir + '/val', transforms_test)
-    
+
     test_loader = data.DataLoader(imagenet, batch_size=n_examples,
                                   shuffle=False, num_workers=4)
 
     x_test, y_test, paths = next(iter(test_loader))
-    
+
     return x_test, y_test
 
 
@@ -120,43 +136,45 @@ CORRUPTIONS_DIR_NAMES: Dict[BenchmarkDataset, str] = {
 
 
 def load_cifar10c(
-    n_examples: int,
-    severity: int = 5,
-    data_dir: str = './data',
-    shuffle: bool = False,
-    corruptions: Sequence[str] = CORRUPTIONS,
-    prepr: Optional[str] = 'none'
+        n_examples: int,
+        severity: int = 5,
+        data_dir: str = './data',
+        shuffle: bool = False,
+        corruptions: Sequence[str] = CORRUPTIONS,
+        prepr: Optional[str] = 'none'
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     return load_corruptions_cifar(BenchmarkDataset.cifar_10, n_examples,
                                   severity, data_dir, corruptions, shuffle)
 
 
 def load_cifar100c(
-    n_examples: int,
-    severity: int = 5,
-    data_dir: str = './data',
-    shuffle: bool = False,
-    corruptions: Sequence[str] = CORRUPTIONS,
-    prepr: Optional[str] = 'none'
+        n_examples: int,
+        severity: int = 5,
+        data_dir: str = './data',
+        shuffle: bool = False,
+        corruptions: Sequence[str] = CORRUPTIONS,
+        prepr: Optional[str] = 'none'
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     return load_corruptions_cifar(BenchmarkDataset.cifar_100, n_examples,
                                   severity, data_dir, corruptions, shuffle)
 
 
 def load_imagenetc(
-    n_examples: Optional[int] = 5000,
-    severity: int = 5,
-    data_dir: str = './data',
-    shuffle: bool = False,
-    corruptions: Sequence[str] = CORRUPTIONS,
-    prepr: str = 'Res256Crop224'
+        n_examples: Optional[int] = 5000,
+        severity: int = 5,
+        data_dir: str = './data',
+        shuffle: bool = False,
+        corruptions: Sequence[str] = CORRUPTIONS,
+        prepr: str = 'Res256Crop224'
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     transforms_test = PREPROCESSINGS[prepr]
 
-    assert len(corruptions) == 1, "so far only one corruption is supported (that's how this function is called in eval.py"
+    assert len(
+        corruptions) == 1, "so far only one corruption is supported (that's how this function is called in eval.py"
 
 
-    data_folder_path = Path(data_dir) / CORRUPTIONS_DIR_NAMES[BenchmarkDataset.imagenet] / corruptions[0] / str(severity)
+    data_folder_path = Path(data_dir) / CORRUPTIONS_DIR_NAMES[BenchmarkDataset.imagenet] / corruptions[0] / str(
+        severity)
     imagenet = CustomImageFolder(data_folder_path, transforms_test)
 
     test_loader = data.DataLoader(imagenet, batch_size=n_examples,
@@ -211,7 +229,7 @@ def load_corruptions_cifar(
 
         images_all = np.load(corruption_file_path)
         images = images_all[(severity - 1) * n_total_cifar:severity *
-                            n_total_cifar]
+                                                           n_total_cifar]
         n_img = int(np.ceil(n_examples / n_pert))
         x_test_list.append(images[:n_img])
         # Duplicate the same labels potentially multiple times
@@ -231,3 +249,24 @@ def load_corruptions_cifar(
     y_test = torch.tensor(y_test)[:n_examples]
 
     return x_test, y_test
+
+
+def load_imagenet_c(args, corruption, level):
+    print('load imagenetc on %s level %d' % (corruption, level))
+    validdir = os.path.join(args.imagenetc_dir, corruption, str(level))
+    teset = SelectedRotateImageFolder(validdir, transforms.Compose([transforms.CenterCrop(224),
+									transforms.ToTensor()]),original=False,rotation=False,rotation_transform=rotation_te_transforms)
+    # if not hasattr(args, 'workers'):
+    # args.workers = 1
+    teloader = torch.utils.data.DataLoader(teset, batch_size=args.batch_size, shuffle=args.if_shuffle,
+                                           num_workers=args.workers, pin_memory=True)
+    teset.switch_mode(True, False)
+    # imgs,targets=None,None
+    # for i,x in enumerate(teloader):
+    #     print(i)
+    #     imgs, targets=x[0],x[1]
+    #     if i==0:
+    #         total_images,total_targets=imgs,targets
+    #     else:
+    #         total_images,total_targets=torch.cat((total_images,imgs),dim=0),torch.cat((total_targets,targets),dim=0)
+    return teset, teloader

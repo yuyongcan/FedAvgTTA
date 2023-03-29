@@ -88,8 +88,8 @@ def forward_and_adapt(x, model, optimizer):
     # adapt
     loss = softmax_entropy(outputs).mean(0)
     # loss_global = 1*softmax_entropy(torch.mean(outputs,dim=0,keepdim=True)).mean(0)
-    loss_global=mean_softmax_entropy(outputs)
-    loss -=0.2*loss_global
+    # loss_global=mean_softmax_entropy(outputs)
+    # loss -=0.2*loss_global
     loss.backward()
     optimizer.step()
     optimizer.zero_grad()

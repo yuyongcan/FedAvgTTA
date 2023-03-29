@@ -78,7 +78,9 @@ class Client(object):
                     correct = predicted.eq(labels.view_as(predicted)).sum().item()
                     self.top1.update(100. * correct / self.batch_size, data.size(0))
                 except StopIteration:
-                    print(f"client {self.id} finished adaptation")
+                    message=f"client {self.id} finished adaptation"
+                    print(message);
+                    logging.info(message)
                     if self.device == "cuda": torch.cuda.empty_cache()
                     break
                 if self.device == "cuda": torch.cuda.empty_cache()

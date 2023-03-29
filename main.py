@@ -46,7 +46,7 @@ def get_args():
     #                     help='the proportion of the parameters will be updated')
     # parser.add_argument('--grad_threshold', type=float, default=5e-5)
     # general parameters, dataloader parameters
-    parser.add_argument('--log_name',default='FL.out',type=str)
+    parser.add_argument('--log_name',default='output.txt',type=str)
     parser.add_argument('--seed', default=2020, type=int, help='seed for initializing training. ')
     parser.add_argument('--gpu', default='7', type=str, help='GPU id to use.')
     parser.add_argument('--workers', default=4, type=int, help='number of data loading workers (default: 4)')

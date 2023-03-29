@@ -11,6 +11,12 @@ from utils.cli_utils import AverageMeter,ProgressMeter
 
 logger = logging.getLogger(__name__)
 
+def adapt_model_to(adapt_model, device):
+    adapt_model.model.to(device)
+    if hasattr(adapt_model,'model_ema'):
+        adapt_model.model_ema.to(device)
+    if hasattr(adapt_model,'model_anchor'):
+        adapt_model.model_anchor.to(device)
 
 class Client(object):
     """Class for client object having its own (private) data and resources to train a model.
@@ -58,14 +64,14 @@ class Client(object):
 
     def client_evaluate(self):
         """Evaluate local model using local dataset (same as training set for convenience)."""
-        self.adapt_model.model.to("cuda:"+self.device)
+        adapt_model_to(self.adapt_model,self.device)
 
         # correct=0
         for i in range(self.batches_per_round):
             with torch.no_grad():
                 try:
                     data, labels = next(self.iter_dataloader)
-                    data, labels = data.float().to("cuda:" + self.device), labels.long().to("cuda:" + self.device)
+                    data, labels = data.float().to("cuda:" + self.device), labels.long().to(self.device)
                     outputs = self.adapt_model(data)
 
                     predicted = outputs.argmax(dim=1, keepdim=True)
@@ -76,5 +82,6 @@ class Client(object):
                     if self.device == "cuda": torch.cuda.empty_cache()
                     break
                 if self.device == "cuda": torch.cuda.empty_cache()
-        self.adapt_model.model.to("cpu")
+        adapt_model_to(self.adapt_model,'cpu')
+
         return self.top1.avg

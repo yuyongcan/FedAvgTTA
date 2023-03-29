@@ -58,7 +58,7 @@ class Server(object):
         self.clients = None
         self._round = 0
         self.writer = writer
-
+        self.device = "cuda:"+args.gpu
         if args.dataset == 'imagenet':
             # args.arch = 'Standard_R50'
             args.data_dir = '/data/yongcan.yu/datasets'
@@ -73,10 +73,12 @@ class Server(object):
 
 
         if args.arch in ['visformer_small', 'vit_base_patch16_224']:
-            subnet = timm.create_model(args.arch, pretrained=True)
+            subnet = timm.create_model(args.arch, pretrained=True).to(self.device)
         else:
             subnet = load_model(args.arch, args.ckpt_dir,
-                                args.dataset, ThreatModel.corruptions)
+                                args.dataset, ThreatModel.corruptions).to(self.device)
+
+
         if args.algorithm == 'tent':
             subnet = tent.configure_model(subnet)
             params, param_names = tent.collect_params(subnet)
@@ -200,14 +202,28 @@ class Server(object):
         gc.collect()
 
         averaged_weights = OrderedDict()
+        averaged_weights_ema=OrderedDict()
         for it, idx in tqdm(enumerate(list(range(len(self.clients)))), leave=False):
             local_weights = self.clients[idx].adapt_model.model.state_dict()
+            if hasattr(self.adapt_model,'model_ema'):
+                local_weights_ema=self.clients[idx].adapt_model.model_ema.state_dict()
+
             for key in self.adapt_model.model.state_dict().keys():
                 if it == 0:
                     averaged_weights[key] = coefficients[it] * local_weights[key]
                 else:
                     averaged_weights[key] += coefficients[it] * local_weights[key]
+
+            if hasattr(self.adapt_model,'model_ema'):
+                for key in self.adapt_model.model_ema.state_dict().keys():
+                    if it == 0:
+                        averaged_weights_ema[key] = coefficients[it] * local_weights_ema[key]
+                    else:
+                        averaged_weights_ema[key] += coefficients[it] * local_weights_ema[key]
         self.adapt_model.model.load_state_dict(averaged_weights)
+
+        if hasattr(self.adapt_model,'model_ema'):
+            self.adapt_model.model_ema.load_state_dict(averaged_weights_ema)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...updated weights of {len(self.clients)} clients are successfully averaged!"
         print(message);

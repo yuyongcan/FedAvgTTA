@@ -2,7 +2,6 @@ import os
 import time
 import datetime
 import pickle
-import yaml
 import threading
 import logging
 import argparse
@@ -10,7 +9,6 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
 from src.server import Server
-from src.utils import launch_tensor_board
 
 from robustbench.model_zoo.enums import ThreatModel
 
@@ -34,10 +32,10 @@ def get_args():
                         choices=[x.value for x in ThreatModel])
     parser.add_argument('--dataset',
                         type=str,
-                        default='cifar100',
+                        default='cifar10',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
-    parser.add_argument('--algorithm', default='tent', type=str,
+    parser.add_argument('--algorithm', default='cotta', type=str,
                         choices=['source', 'norm', 'eata', 'tent', 'cotta', 'tent_ps','tent_psp','eata_m','ema'],
                         help='eata or eta or tent')
     # parser.add_argument('--parameters_update', default='grad', type=str,
@@ -48,9 +46,9 @@ def get_args():
     #                     help='the proportion of the parameters will be updated')
     # parser.add_argument('--grad_threshold', type=float, default=5e-5)
     # general parameters, dataloader parameters
-    parser.add_argument('--log_name',default='FL.log',type=str)
+    parser.add_argument('--log_name',default='FL.out',type=str)
     parser.add_argument('--seed', default=2020, type=int, help='seed for initializing training. ')
-    parser.add_argument('--gpu', default='0', type=str, help='GPU id to use.')
+    parser.add_argument('--gpu', default='7', type=str, help='GPU id to use.')
     parser.add_argument('--workers', default=4, type=int, help='number of data loading workers (default: 4)')
     parser.add_argument('--batch_size', default=64, type=int, help='mini-batch size (default: 64)')
     parser.add_argument('--if_shuffle', default=True, type=bool, help='if shuffle the test set.')
@@ -85,21 +83,22 @@ def get_args():
     # 'each_shift_reset' means after each type of distribution shift, e.g., ImageNet-C Gaussian Noise Level 5, the model parameters will be reset.
 
     # optimize hyper parameters
-    # parser.add_argument('--optimizer', type=str, default='Adam',
-    #                     choices=['Adam', 'SGD'],
-    #                     help='the optimizer used under adaptation')
-    # parser.add_argument('--weight_decay', type=float, default=0.)
-    # parser.add_argument('--momentum', type=float, default=0.999)
-    # parser.add_argument('--beta', type=float, default=0.9)
-    # parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
+    parser.add_argument('--optimizer', type=str, default='Adam',
+                        choices=['Adam', 'SGD'],
+                        help='the optimizer used under adaptation')
+    parser.add_argument('--weight_decay', type=float, default=0.)
+    parser.add_argument('--momentum', type=float, default=0.999)
+    parser.add_argument('--beta', type=float, default=0.9)
+    parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
 
-    # # CoTTA parameters
-    # parser.add_argument('--steps', type=int, default=1)
-    # parser.add_argument('--RST', type=float, default=0.01)
-    # parser.add_argument('--ap', type=float, default=0.92)
+    # CoTTA parameters
+    parser.add_argument('--steps', type=int, default=1)
+    parser.add_argument('--RST', type=float, default=0.01)
+    parser.add_argument('--ap', type=float, default=0.92)
 
     #FL parameters
     parser.add_argument('--local_batches', default=20, type=int, help='corruption level of test(val) set.')
+    parser.add_argument('--Federated', default=True, type=bool, help='Federated test time adaptation or not')
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -108,7 +107,7 @@ if __name__ == "__main__":
     args=get_args()
     args.common_corruptions=corruptions
     # modify log_path to contain current time
-    args.log_path = os.path.join(args.output, str(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")))
+    args.log_path = os.path.join(args.output,args.algorithm,str(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")))
 
     # initiate TensorBaord for tracking losses and metrics
     writer = SummaryWriter(log_dir=args.log_path, filename_suffix="FL")
@@ -130,6 +129,7 @@ if __name__ == "__main__":
     message = "\n[WELCOME] Unfolding configurations...!"
     print(message); logging.info(message)
 
+    logger.info(args)
 
     # for config in configs:
     #     print(config); logging.info(config)

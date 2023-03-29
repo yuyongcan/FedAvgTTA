@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 
 import math
-from tent import softmax_entropy
+from methods.tent import softmax_entropy
 from utils.cli_utils import accuracy as batch_acc,ProgressMeter
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 

@@ -1,14 +1,7 @@
 import copy
 import gc
-import logging
 import random
 
-import numpy as np
-import torch
-import torch.nn as nn
-
-from multiprocessing import pool, cpu_count
-from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from collections import OrderedDict
 
@@ -18,9 +11,8 @@ from .client import Client
 
 from robustbench.model_zoo.enums import ThreatModel
 from robustbench.utils import load_model
-import tent
+from methods import tent
 import timm
-from .data import load_imagenet_c
 
 logger = logging.getLogger(__name__)
 

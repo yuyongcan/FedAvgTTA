@@ -2,6 +2,7 @@ import copy
 import gc
 import random
 
+from torch import optim
 from tqdm.auto import tqdm
 from collections import OrderedDict
 
@@ -11,11 +12,36 @@ from .client import Client
 
 from robustbench.model_zoo.enums import ThreatModel
 from robustbench.utils import load_model
-from methods import tent
+from methods import tent,cotta
 import timm
 
 logger = logging.getLogger(__name__)
 
+def setup_optimizer(params, args):
+    """Set up optimizer for tent adaptation.
+
+    Tent needs an optimizer for test-time entropy minimization.
+    In principle, tent could make use of any gradient optimizer.
+    In practice, we advise choosing Adam or SGD+momentum.
+    For optimization settings, we advise to use the settings from the end of
+    trainig, if known, or start with a low learning rate (like 0.001) if not.
+
+    For best results, try tuning the learning rate and batch size.
+    """
+    if args.optimizer == 'Adam':
+        return optim.Adam(params,
+                          lr=args.lr,
+                          betas=(args.beta, 0.999),
+                          weight_decay=args.weight_decay)
+    elif args.optimizer == 'SGD':
+        return optim.SGD(params,
+                         lr=args.lr,
+                         momentum=0.9,
+                         dampening=0,
+                         weight_decay=args.weight_decay,
+                         nesterov=True)
+    else:
+        raise NotImplementedError
 
 class Server(object):
     """Class for implementing center server orchestrating the whole process of federated learning
@@ -83,10 +109,47 @@ class Server(object):
             else:
                 optimizer = torch.optim.Adam(params, 0.001)
             adapt_model = tent.Tent(subnet, optimizer)
+        elif args.algorithm == 'cotta':
+            if args.dataset == 'imagenet':
+                args.lr = 0.01
+                args.step = 1
+                args.beta = 0.9
+                args.weight_decay = 0.
+                args.momentum = 0.999
+                args.rst = 0.01
+                args.ap = 0.92
+                args.optimizer = 'SGD'
+            elif args.dataset == 'cifar10':
+                args.lr = 0.001
+                args.step = 1
+                args.beta = 0.9
+                args.weight_decay = 0.
+                args.momentum = 0.999
+                args.rst = 0.01
+                args.ap = 0.92
+                args.optimizer = 'Adam'
+            elif args.dataset == 'cifar100':
+                args.lr = 0.001
+                args.step = 1
+                args.beta = 0.9
+                args.weight_decay = 0.
+                args.momentum = 0.999
+                args.rst = 0.01
+                args.ap = 0.72
+                args.optimizer = 'Adam'
+
+            subnet = cotta.configure_model(subnet)
+            params, param_names = cotta.collect_params(subnet)
+            optimizer = setup_optimizer(params, args)
+            adapt_model = cotta.CoTTA(subnet, optimizer,
+                                      steps=args.steps,
+                                      )
+        else:
+            assert False, NotImplementedError
         self.adapt_model = adapt_model
 
         self.seed = args.seed
-        self.device = args.gpu
+        # self.device = args.gpu
 
         self.data_path = args.data_dir
         self.dataset_name = args.dataset

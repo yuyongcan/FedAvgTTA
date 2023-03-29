@@ -59,7 +59,7 @@ class Client(object):
         self.batches_now=0
         self.batches_per_round=args.local_batches
         self.top1 = AverageMeter('Acc@1', ':6.2f')
-        # self.top5 = AverageMeter('Acc@5', ':6.2f')
+        # self.top5 = AverageMeter('Acc@5', ':6.2f')`
 
 
     def client_evaluate(self):
@@ -71,7 +71,7 @@ class Client(object):
             with torch.no_grad():
                 try:
                     data, labels = next(self.iter_dataloader)
-                    data, labels = data.float().to("cuda:" + self.device), labels.long().to(self.device)
+                    data, labels = data.float().to(self.device), labels.long().to(self.device)
                     outputs = self.adapt_model(data)
 
                     predicted = outputs.argmax(dim=1, keepdim=True)

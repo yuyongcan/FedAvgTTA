@@ -140,7 +140,7 @@ class Server(object):
                                             momentum=0.9)
             else:
                 optimizer = torch.optim.Adam(params, 0.001)
-            adapt_model = tent.Tent(subnet, optimizer)
+            adapt_model = tent.Tent(subnet, optimizer,args=args)
         elif args.algorithm == 'cotta':
             if args.dataset == 'imagenet':
                 args.lr = 0.01
@@ -175,6 +175,7 @@ class Server(object):
             optimizer = setup_optimizer(params, args)
             adapt_model = cotta.CoTTA(subnet, optimizer,
                                       steps=args.steps,
+                                      args=args
                                       )
         elif args.algorithm == 'eata':
             # parameter setting
@@ -275,7 +276,7 @@ class Server(object):
         self.setup_clients(self.args)
 
         # send the model skeleton to all clients
-        self.transmit_model()
+        self.transmit_model(init=True)
 
     def create_clients(self, local_datasets):
         """Initialize each Client instance."""
@@ -285,9 +286,9 @@ class Server(object):
             clients.append(client)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...successfully created all {str(self.num_clients)} clients!"
-        print(message);
+        print(message)
         logging.info(message)
-        del message;
+        del message
         gc.collect()
         return clients
 
@@ -297,34 +298,37 @@ class Server(object):
             client.setup(args)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...successfully finished setup of all {str(self.num_clients)} clients!"
-        print(message);
+        print(message)
         logging.info(message)
-        del message;
+        del message
         gc.collect()
 
-    def transmit_model(self):
+    def transmit_model(self,init=False):
         """Send the updated global model to selected/all clients."""
 
         # send the global model to all clients before the very first and after the last federated round
         # assert (self._round == 0) or (self._round == self.num_rounds)
-        client_0_model = copy.deepcopy(self.clients[0].adapt_model)
+        # client_0_model = copy.deepcopy(self.clients[0].adapt_model)
 
         for client in tqdm(self.clients, leave=False):
-            client.adapt_model = copy.deepcopy(self.adapt_model)
+            if init:
+                client.adapt_model = copy.deepcopy(self.adapt_model)
+            else:
+                client.adapt_model.transmit(self.adapt_model)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...successfully transmitted models to all {str(self.num_clients)} clients!"
-        print(message);
+        print(message)
         logging.info(message)
-        del message;
+        del message
         gc.collect()
 
     def sample_clients(self):
         """Select some fraction of all clients."""
         # sample clients randommly
         message = f"[Round: {str(self._round).zfill(4)}] Select clients...!"
-        print(message);
+        print(message)
         logging.info(message)
-        del message;
+        del message
         gc.collect()
 
         num_sampled_clients = max(int(self.fraction * self.num_clients), 1)
@@ -336,9 +340,9 @@ class Server(object):
     def average_model(self, coefficients):
         """Average the updated and transmitted parameters from each selected client."""
         message = f"[Round: {str(self._round).zfill(4)}] Aggregate updated weights of {len(self.clients)} clients...!"
-        print(message);
+        print(message)
         logging.info(message)
-        del message;
+        del message
         gc.collect()
 
         averaged_weights = OrderedDict()
@@ -366,9 +370,9 @@ class Server(object):
             self.adapt_model.model_ema.load_state_dict(averaged_weights_ema)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...updated weights of {len(self.clients)} clients are successfully averaged!"
-        print(message);
+        print(message)
         logging.info(message)
-        del message;
+        del message
         gc.collect()
 
     def evaluate_selected_models(self):
@@ -377,7 +381,7 @@ class Server(object):
         for idx in range(len(self.clients)):
             acc = self.clients[idx].client_evaluate()
             message = f"[Round: {str(self._round).zfill(4)}] ...evaluate weights of {idx} clients are successfully averaged! acc:{acc:.2f}%"
-            print(message);
+            print(message)
             logging.info(message)
 
     def train_federated_model(self):
@@ -387,7 +391,7 @@ class Server(object):
 
         # send global model to the selected clients
         if self.args.Federated:
-            self.transmit_model()
+            self.transmit_model(init=False)
 
         self.evaluate_selected_models()
 
@@ -403,7 +407,6 @@ class Server(object):
         # self.results = {"loss": [], "accuracy": []}
         for r in range(self.num_rounds):
             self._round = r + 1
-
             self.train_federated_model()
 
-        self.transmit_model()
+        self.transmit_model(init=False)

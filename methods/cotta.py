@@ -11,7 +11,7 @@ from time import time
 import logging
 
 
-def get_tta_transforms(gaussian_std: float=0.005, soft=False, clip_inputs=False):
+def get_tta_transforms(gaussian_std: float = 0.005, soft=False, clip_inputs=False):
     img_shape = (224, 224, 3)
     n_pixels = img_shape[0]
 
@@ -20,7 +20,7 @@ def get_tta_transforms(gaussian_std: float=0.005, soft=False, clip_inputs=False)
     p_hflip = 0.5
 
     tta_transforms = transforms.Compose([
-        my_transforms.Clip(0.0, 1.0), 
+        my_transforms.Clip(0.0, 1.0),
         my_transforms.ColorJitterPro(
             brightness=[0.8, 1.2] if soft else [0.6, 1.4],
             contrast=[0.85, 1.15] if soft else [0.7, 1.3],
@@ -28,10 +28,10 @@ def get_tta_transforms(gaussian_std: float=0.005, soft=False, clip_inputs=False)
             hue=[-0.03, 0.03] if soft else [-0.06, 0.06],
             gamma=[0.85, 1.15] if soft else [0.7, 1.3]
         ),
-        transforms.Pad(padding=int(n_pixels / 2), padding_mode='edge'),  
+        transforms.Pad(padding=int(n_pixels / 2), padding_mode='edge'),
         transforms.RandomAffine(
             degrees=[-8, 8] if soft else [-15, 15],
-            translate=(1/16, 1/16),
+            translate=(1 / 16, 1 / 16),
             scale=(0.95, 1.05) if soft else (0.9, 1.1),
             shear=None,
             resample=PIL.Image.BILINEAR,
@@ -46,7 +46,7 @@ def get_tta_transforms(gaussian_std: float=0.005, soft=False, clip_inputs=False)
     return tta_transforms
 
 
-def update_ema_variables(ema_model, model, alpha_teacher):#, iteration):
+def update_ema_variables(ema_model, model, alpha_teacher):  # , iteration):
     for ema_param, param in zip(ema_model.parameters(), model.parameters()):
         ema_param.data[:] = alpha_teacher * ema_param[:].data[:] + (1 - alpha_teacher) * param[:].data[:]
     return ema_model
@@ -57,9 +57,11 @@ class CoTTA(nn.Module):
 
     Once tented, a model adapts itself by updating on every forward.
     """
-    def __init__(self, model, optimizer, steps=1, episodic=False):
+
+    def __init__(self, model, optimizer, steps=1, episodic=False, args=None):
         super().__init__()
         self.model = model
+        self.args = args
         self.optimizer = optimizer
         self.steps = steps
         assert steps > 0, "cotta requires >= 1 step(s) to forward and update"
@@ -67,7 +69,7 @@ class CoTTA(nn.Module):
 
         self.model_state, self.optimizer_state, self.model_ema, self.model_anchor = \
             copy_model_and_optimizer(self.model, self.optimizer)
-        self.transform = get_tta_transforms()    
+        self.transform = get_tta_transforms()
 
     def forward(self, x):
         if self.episodic:
@@ -86,8 +88,7 @@ class CoTTA(nn.Module):
         # use this line if you want to reset the teacher model as well. Maybe you also 
         # want to del self.model_ema first to save gpu memory.
         self.model_state, self.optimizer_state, self.model_ema, self.model_anchor = \
-            copy_model_and_optimizer(self.model, self.optimizer)                         
-
+            copy_model_and_optimizer(self.model, self.optimizer)
 
     @torch.enable_grad()  # ensure grads in possible no grad context for testing
     def forward_and_adapt(self, x, model, optimizer):
@@ -99,10 +100,10 @@ class CoTTA(nn.Module):
         # Augmentation-averaged Prediction
         N = 32
         outputs_emas = []
-        to_aug = anchor_prob.mean(0)<0.1
-        if to_aug: 
+        to_aug = anchor_prob.mean(0) < 0.1
+        if to_aug:
             for i in range(N):
-                outputs_  = self.model_ema(self.transform(x)).detach()
+                outputs_ = self.model_ema(self.transform(x)).detach()
                 outputs_emas.append(outputs_)
         # Threshold choice discussed in supplementary
         if to_aug:
@@ -111,27 +112,43 @@ class CoTTA(nn.Module):
             outputs_ema = standard_ema
         # Augmentation-averaged Prediction
         # Student update
-        loss = (softmax_entropy(outputs, outputs_ema.detach())).mean(0) 
+        loss = (softmax_entropy(outputs, outputs_ema.detach())).mean(0)
+        if self.args.Fed_algorithm == 'FedProx' and self.args.Federated:
+            proximal_term = 0.
+            for w, w_t in zip(model.parameters(), self.global_model.parameters()):
+                proximal_term += (w - w_t).norm(2)
+            loss += self.args.mu / 2 * proximal_term
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
         # Teacher update
-        self.model_ema = update_ema_variables(ema_model = self.model_ema, model = self.model, alpha_teacher=0.999)
+        self.model_ema = update_ema_variables(ema_model=self.model_ema, model=self.model, alpha_teacher=0.999)
         # Stochastic restore
         if True:
-            for nm, m  in self.model.named_modules():
+            for nm, m in self.model.named_modules():
                 for npp, p in m.named_parameters():
                     if npp in ['weight', 'bias'] and p.requires_grad:
-                        mask = (torch.rand(p.shape)<0.01).float().to(p.device)
+                        mask = (torch.rand(p.shape) < 0.01).float().to(p.device)
                         with torch.no_grad():
-                            p.data = self.model_state[f"{nm}.{npp}"] * mask + p * (1.-mask)
+                            p.data = self.model_state[f"{nm}.{npp}"] * mask + p * (1. - mask)
         return outputs_ema
+
+    def transmit(self, adapt_model):
+        if self.args.Fed_algorithm == 'FedAvg':
+            self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
+            self.model_ema.load_state_dict(deepcopy(adapt_model.model_ema.state_dict()))
+
+        elif self.args.Fed_algorithm == 'FedProx':
+            self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
+            self.model_ema.load_state_dict(deepcopy(adapt_model.model_ema.state_dict()))
+            self.global_model = adapt_model.model
 
 
 @torch.jit.script
-def softmax_entropy(x, x_ema):# -> torch.Tensor:
+def softmax_entropy(x, x_ema):  # -> torch.Tensor:
     """Entropy of softmax distribution from logits."""
-    return -0.5*(x_ema.softmax(1) * x.log_softmax(1)).sum(1)-0.5*(x.softmax(1) * x_ema.log_softmax(1)).sum(1)
+    return -0.5 * (x_ema.softmax(1) * x.log_softmax(1)).sum(1) - 0.5 * (x.softmax(1) * x_ema.log_softmax(1)).sum(1)
+
 
 def collect_params(model):
     """Collect all trainable parameters.
@@ -144,7 +161,7 @@ def collect_params(model):
     params = []
     names = []
     for nm, m in model.named_modules():
-        if True:#isinstance(m, nn.BatchNorm2d): collect all 
+        if True:  # isinstance(m, nn.BatchNorm2d): collect all
             for np, p in m.named_parameters():
                 if np in ['weight', 'bias'] and p.requires_grad:
                     params.append(p)

@@ -2,22 +2,25 @@
 Copyright to Tent Authors ICLR 2021 Spotlight
 """
 
-from argparse import ArgumentDefaultsHelpFormatter
+# from argparse import ArgumentDefaultsHelpFormatter
 from copy import deepcopy
 
 import torch
 import torch.nn as nn
 import torch.jit
 
-from torch.autograd import Variable
+# from torch.autograd import Variable
 
 
 class Tent(nn.Module):
     """Tent adapts a model by entropy minimization during testing.
     Once tented, a model adapts itself by updating on every forward.
     """
-    def __init__(self, model, optimizer, fishers=None, training_avg=None, training_var=None, steps=1, episodic=False):
+
+    def __init__(self, model, optimizer, steps=1, episodic=False, args=None):
         super().__init__()
+        self.global_model = None
+        self.args = args
         self.model = model
         self.optimizer = optimizer
         self.steps = steps
@@ -29,13 +32,12 @@ class Tent(nn.Module):
         self.model_state, self.optimizer_state = \
             copy_model_and_optimizer(self.model, self.optimizer)
 
-
     def forward(self, x):
         if self.episodic:
             self.reset()
         if self.steps > 0:
             for _ in range(self.steps):
-                outputs = forward_and_adapt(x, self.model, self.optimizer)
+                outputs = forward_and_adapt(x, self.model, self.optimizer,self.global_model, self.args)
         else:
             self.model.eval()
             with torch.no_grad():
@@ -51,20 +53,28 @@ class Tent(nn.Module):
     def reset_steps(self, new_steps):
         self.steps = new_steps
 
+    def transmit(self, adapt_model):
+        if self.args.Fed_algorithm == 'FedAvg':
+            self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
+        elif self.args.Fed_algorithm == 'FedProx':
+            self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
+            self.global_model = adapt_model.model
+
 
 @torch.jit.script
 def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
     """Entropy of softmax distribution from logits."""
     temprature = 1
-    x = x/ temprature
+    x = x / temprature
     x = -(x.softmax(1) * x.log_softmax(1)).sum(1)
     return x
 
-def mean_softmax_entropy(x:torch.Tensor)->torch.Tensor:
+
+def mean_softmax_entropy(x: torch.Tensor) -> torch.Tensor:
     temprature = 1
     x = x / temprature
-    mean_probe_d=torch.mean(x.softmax(1),dim=0)
-    entropy=-torch.sum(mean_probe_d*torch.log(mean_probe_d))
+    mean_probe_d = torch.mean(x.softmax(1), dim=0)
+    entropy = -torch.sum(mean_probe_d * torch.log(mean_probe_d))
     return entropy
 
 
@@ -72,14 +82,14 @@ def mean_softmax_entropy(x:torch.Tensor)->torch.Tensor:
 def energy(x: torch.Tensor) -> torch.Tensor:
     """Energy calculation from logits."""
     temprature = 1
-    x = -(temprature*torch.logsumexp(x / temprature, dim=1))
+    x = -(temprature * torch.logsumexp(x / temprature, dim=1))
     if torch.rand(1) > 0.95:
         print(x.mean(0).item())
     return x
 
 
 @torch.enable_grad()  # ensure grads in possible no grad context for testing
-def forward_and_adapt(x, model, optimizer):
+def forward_and_adapt(x, model, optimizer, global_model=None,args=None):
     """Forward and adapt model on batch of data.
     Measure entropy of the model prediction, take gradients, and update params.
     """
@@ -87,6 +97,11 @@ def forward_and_adapt(x, model, optimizer):
     outputs = model(x)
     # adapt
     loss = softmax_entropy(outputs).mean(0)
+    if args.Fed_algorithm=='FedProx' and args.Federated:
+        proximal_term=0.
+        for w, w_t in zip(model.parameters(), global_model.parameters()):
+            proximal_term += (w - w_t).norm(2)
+        loss+=args.mu/2*proximal_term
     # loss_global = 1*softmax_entropy(torch.mean(outputs,dim=0,keepdim=True)).mean(0)
     # loss_global=mean_softmax_entropy(outputs)
     # loss -=0.2*loss_global
@@ -105,7 +120,7 @@ def collect_params(model):
     params = []
     names = []
     for nm, m in model.named_modules():
-        if isinstance(m, nn.BatchNorm2d) or isinstance(m,nn.LayerNorm):
+        if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.LayerNorm):
             for np, p in m.named_parameters():
                 if np in ['weight', 'bias']:  # weight is scale, bias is shift
                     params.append(p)
@@ -140,7 +155,7 @@ def configure_model(model):
             m.track_running_stats = False
             m.running_mean = None
             m.running_var = None
-        if isinstance(m,nn.LayerNorm):
+        if isinstance(m, nn.LayerNorm):
             m.requires_grad_(True)
     return model
 

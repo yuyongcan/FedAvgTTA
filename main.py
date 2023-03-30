@@ -16,7 +16,8 @@ from robustbench.model_zoo.enums import ThreatModel
 
 corruptions = [
     'gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur', 'motion_blur', 'zoom_blur', 'snow',
-     'frost', 'fog', 'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+    'frost', 'fog', 'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+
 
 def get_args():
     parser = argparse.ArgumentParser(description='PyTorch ImageNet-C Testing')
@@ -34,11 +35,11 @@ def get_args():
                         choices=[x.value for x in ThreatModel])
     parser.add_argument('--dataset',
                         type=str,
-                        default='cifar100',
+                        default='cifar10',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
-    parser.add_argument('--algorithm', default='eata', type=str,
-                        choices=['source', 'norm', 'eata', 'tent', 'cotta', 'tent_ps','tent_psp','eata_m','ema'],
+    parser.add_argument('--algorithm', default='tent', type=str,
+                        choices=['source', 'norm', 'eata', 'tent', 'cotta', 'tent_ps', 'tent_psp', 'eata_m', 'ema'],
                         help='eata or eta or tent')
     # parser.add_argument('--parameters_update', default='grad', type=str,
     #                     choices=['BN', 'CLS', 'bias', 'all', 'random','grad'],
@@ -48,7 +49,7 @@ def get_args():
     #                     help='the proportion of the parameters will be updated')
     # parser.add_argument('--grad_threshold', type=float, default=5e-5)
     # general parameters, dataloader parameters
-    parser.add_argument('--log_name',default='output.txt',type=str)
+    parser.add_argument('--log_name', default='output.txt', type=str)
     parser.add_argument('--seed', default=2020, type=int, help='seed for initializing training. ')
     parser.add_argument('--gpu', default='7', type=str, help='GPU id to use.')
     parser.add_argument('--workers', default=4, type=int, help='number of data loading workers (default: 4)')
@@ -56,7 +57,9 @@ def get_args():
     parser.add_argument('--if_shuffle', default=True, type=bool, help='if shuffle the test set.')
 
     # model parameters
-    parser.add_argument('--arch', default='vit_base_patch16_224', choices=['Standard_R50','vit_base_patch16_224','visformer_small'],type=str, help='the default model architecture')
+    parser.add_argument('--arch', default='vit_base_patch16_224',
+                        choices=['Standard_R50', 'vit_base_patch16_224', 'visformer_small'], type=str,
+                        help='the default model architecture')
 
     # experiment mode setting
     # parser.add_argument('--exp_type', default='full', type=str,
@@ -98,19 +101,25 @@ def get_args():
     parser.add_argument('--RST', type=float, default=0.01)
     parser.add_argument('--ap', type=float, default=0.92)
 
-    #FL parameters
-    parser.add_argument('--local_batches', default=20, type=int, help='corruption level of test(val) set.')
+    # FL parameters
+    parser.add_argument('--local_batches', default=50, type=int, help='corruption level of test(val) set.')
     parser.add_argument('--Federated', default=True, type=bool, help='Federated test time adaptation or not')
-    parser.add_argument('--dataloder_path', default='./iter_dataloders', type=str, help='the path to save and load fixed dataloders')
+    # parser.add_argument('--dataloder_path', default='./iter_dataloders', type=str, help='the path to save and load fixed dataloders')
+    parser.add_argument('--Fed_algorithm', default='FedProx', type=str, choices=['FedAvg', 'FedProx'],
+                        help='the algorithm used for Federated Learning')
+
+    # FedProx parameters
+    parser.add_argument('--mu', default=0.01, type=float,
+                        help='the weight of loss of regularization')
     return parser.parse_args()
 
+
 if __name__ == "__main__":
-
-
-    args=get_args()
-    args.common_corruptions=corruptions
+    args = get_args()
+    args.common_corruptions = corruptions
     # modify log_path to contain current time
-    args.log_path = os.path.join(args.output,args.dataset,args.algorithm,str(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")))
+    args.log_path = os.path.join(args.output, args.dataset, args.Fed_algorithm+'_'+args.algorithm,
+                                 str(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))+'_'+str(args.local_batches))
 
     # initiate TensorBaord for tracking losses and metrics
     writer = SummaryWriter(log_dir=args.log_path, filename_suffix="FL")
@@ -127,10 +136,11 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="[%(levelname)s](%(asctime)s) %(message)s",
         datefmt="%Y/%m/%d/ %I:%M:%S %p")
-    
+
     # display and log experiment configuration
     message = "\n[WELCOME] Unfolding configurations...!"
-    print(message); logging.info(message)
+    print(message);
+    logging.info(message)
 
     logger.info(args)
 
@@ -148,9 +158,10 @@ if __name__ == "__main__":
     # save resulting losses and metrics
     # with open(os.path.join(log_config["log_path"], "result.pkl"), "wb") as f:
     #     pickle.dump(central_server.results, f)
-    
+
     # bye!
     message = "...done all learning process!\n...exit program!"
-    print(message); logging.info(message)
-    time.sleep(3); exit()
-
+    print(message);
+    logging.info(message)
+    time.sleep(3);
+    exit()

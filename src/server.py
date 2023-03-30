@@ -13,10 +13,22 @@ from .client import Client
 
 from robustbench.model_zoo.enums import ThreatModel
 from robustbench.utils import load_model
-from methods import tent,cotta,eata
+from methods import tent, cotta, eata
 import timm
+import torchvision.transforms
 
 logger = logging.getLogger(__name__)
+
+datasets_path = {'imagenet': '/data2/yongcan.yu/datasets/imagenet',
+                 'cifar10': '/data2/yongcan.yu/datasets',
+                 'cifar100': "/data2/yongcan.yu/datasets"}
+
+normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+te_transforms = transforms.Compose([transforms.Resize(256),
+                                    transforms.CenterCrop(224),
+                                    transforms.ToTensor(),
+                                    normalize])
+
 
 def setup_optimizer(params, args):
     """Set up optimizer for tent adaptation.
@@ -43,6 +55,26 @@ def setup_optimizer(params, args):
                          nesterov=True)
     else:
         raise NotImplementedError
+
+
+def load_val_dataset(args, fisher=False):
+    if args.dataset == 'cifar10':
+        dataset = torchvision.datasets.CIFAR10(root=datasets_path['cifar10'], train=False, download=True,
+                                               transform=torchvision.transforms.ToTensor())
+    elif args.dataset == 'cifar100':
+        dataset = torchvision.datasets.CIFAR100(root=datasets_path['cifar100'], train=False, download=True,
+                                                transform=torchvision.transforms.ToTensor())
+    elif args.dataset == 'imagenet':
+        dataset = torchvision.datasets.ImageNet(root=datasets_path['imagenet'], split='val',
+                                                transform=te_transforms)
+
+    data_loader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=args.if_shuffle,
+                                              num_workers=args.workers, pin_memory=True)
+    # if fisher:
+    #     dataset=changed_to_fisher(dataset,args)
+
+    return dataset, data_loader
+
 
 class Server(object):
     """Class for implementing center server orchestrating the whole process of federated learning
@@ -78,7 +110,7 @@ class Server(object):
         self.clients = None
         self._round = 0
         self.writer = writer
-        self.device = "cuda:"+args.gpu
+        self.device = "cuda:" + args.gpu
         if args.dataset == 'imagenet':
             # args.arch = 'Standard_R50'
             args.data_dir = '/data/yongcan.yu/datasets'
@@ -97,7 +129,6 @@ class Server(object):
         else:
             subnet = load_model(args.arch, args.ckpt_dir,
                                 args.dataset, ThreatModel.corruptions).to(self.device)
-
 
         if args.algorithm == 'tent':
             subnet = tent.configure_model(subnet)
@@ -175,12 +206,12 @@ class Server(object):
             params, param_names = eata.collect_params(subnet)
             ewc_optimizer = torch.optim.SGD(params, 0.001)
             fishers = {}
-            train_loss_fn = nn.CrossEntropyLoss().cuda()
+            train_loss_fn = nn.CrossEntropyLoss().to(self.device)
             for iter_, (images, targets) in enumerate(fisher_loader, start=1):
                 if args.gpu is not None:
-                    images = images.cuda()
+                    images = images.to(self.device)
                 if torch.cuda.is_available():
-                    targets = targets.cuda()
+                    targets = targets.to(self.device)
                 outputs = subnet(images)
                 _, targets = outputs.max(1)
                 loss = train_loss_fn(outputs, targets)
@@ -250,7 +281,7 @@ class Server(object):
         """Initialize each Client instance."""
         clients = []
         for k, dataset in tqdm(enumerate(local_datasets), leave=False):
-            client = Client(client_id=k, local_data=dataset, device=self.device,args=self.args)
+            client = Client(client_id=k, local_data=dataset, device=self.device, args=self.args)
             clients.append(client)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...successfully created all {str(self.num_clients)} clients!"
@@ -311,11 +342,11 @@ class Server(object):
         gc.collect()
 
         averaged_weights = OrderedDict()
-        averaged_weights_ema=OrderedDict()
+        averaged_weights_ema = OrderedDict()
         for it, idx in tqdm(enumerate(list(range(len(self.clients)))), leave=False):
             local_weights = self.clients[idx].adapt_model.model.state_dict()
-            if hasattr(self.adapt_model,'model_ema'):
-                local_weights_ema=self.clients[idx].adapt_model.model_ema.state_dict()
+            if hasattr(self.adapt_model, 'model_ema'):
+                local_weights_ema = self.clients[idx].adapt_model.model_ema.state_dict()
 
             for key in self.adapt_model.model.state_dict().keys():
                 if it == 0:
@@ -323,7 +354,7 @@ class Server(object):
                 else:
                     averaged_weights[key] += coefficients[it] * local_weights[key]
 
-            if hasattr(self.adapt_model,'model_ema'):
+            if hasattr(self.adapt_model, 'model_ema'):
                 for key in self.adapt_model.model_ema.state_dict().keys():
                     if it == 0:
                         averaged_weights_ema[key] = coefficients[it] * local_weights_ema[key]
@@ -331,7 +362,7 @@ class Server(object):
                         averaged_weights_ema[key] += coefficients[it] * local_weights_ema[key]
         self.adapt_model.model.load_state_dict(averaged_weights)
 
-        if hasattr(self.adapt_model,'model_ema'):
+        if hasattr(self.adapt_model, 'model_ema'):
             self.adapt_model.model_ema.load_state_dict(averaged_weights_ema)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...updated weights of {len(self.clients)} clients are successfully averaged!"
@@ -366,7 +397,6 @@ class Server(object):
         # average each updated model parameters of the selected clients and update the global model
         if self.args.Federated:
             self.average_model(mixing_coefficients)
-
 
     def fit(self):
         """Execute the whole process of the federated learning."""

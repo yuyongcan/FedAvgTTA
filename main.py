@@ -5,6 +5,8 @@ import pickle
 import threading
 import logging
 import argparse
+
+import math
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
@@ -35,7 +37,7 @@ def get_args():
                         default='cifar100',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
-    parser.add_argument('--algorithm', default='cotta', type=str,
+    parser.add_argument('--algorithm', default='eata', type=str,
                         choices=['source', 'norm', 'eata', 'tent', 'cotta', 'tent_ps','tent_psp','eata_m','ema'],
                         help='eata or eta or tent')
     # parser.add_argument('--parameters_update', default='grad', type=str,
@@ -68,16 +70,16 @@ def get_args():
     # parser.add_argument('--rotation', default=False, type=bool,
     #                     help='if use the rotation ssl task for training (this is TTTs dataloader).')
 
-    # # eata settings
-    # parser.add_argument('--fisher_clip_by_norm', type=float, default=10.0, help='Clip fisher before it is too large')
-    # parser.add_argument('--fisher_size', default=2000, type=int,
-    #                     help='number of samples to compute fisher information matrix.')
-    # parser.add_argument('--fisher_alpha', type=float, default=2000.,
-    #                     help='the trade-off between entropy and regularization loss, in Eqn. (8)')
-    # parser.add_argument('--e_margin', type=float, default=math.log(1000) * 0.40,
-    #                     help='entropy margin E_0 in Eqn. (3) for filtering reliable samples')
-    # parser.add_argument('--d_margin', type=float, default=0.05,
-    #                     help='\epsilon in Eqn. (5) for filtering redundant samples')
+    # eata settings
+    parser.add_argument('--fisher_clip_by_norm', type=float, default=10.0, help='Clip fisher before it is too large')
+    parser.add_argument('--fisher_size', default=2000, type=int,
+                        help='number of samples to compute fisher information matrix.')
+    parser.add_argument('--fisher_alpha', type=float, default=2000.,
+                        help='the trade-off between entropy and regularization loss, in Eqn. (8)')
+    parser.add_argument('--e_margin', type=float, default=math.log(1000) * 0.40,
+                        help='entropy margin E_0 in Eqn. (3) for filtering reliable samples')
+    parser.add_argument('--d_margin', type=float, default=0.05,
+                        help='\epsilon in Eqn. (5) for filtering redundant samples')
 
     # 'cotinual' means the model parameters will never be reset, also called online adaptation;
     # 'each_shift_reset' means after each type of distribution shift, e.g., ImageNet-C Gaussian Noise Level 5, the model parameters will be reset.

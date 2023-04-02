@@ -17,7 +17,7 @@ from robustbench.utils import load_model
 from methods import tent, cotta, eata
 import timm
 import torchvision.transforms
-
+from src.utils import show_info
 logger = logging.getLogger(__name__)
 
 datasets_path = {'imagenet': '/data2/yongcan.yu/datasets/imagenet',
@@ -107,10 +107,10 @@ class Server(object):
         optim_config: Kwargs provided for optimizer.
     """
 
-    def __init__(self, writer, args):
+    def __init__(self, args):
         self.clients = None
         self._round = 0
-        self.writer = writer
+        # self.writer = writer
         self.device = "cuda:" + args.gpu
         if args.dataset == 'imagenet':
             # args.arch = 'Standard_R50'
@@ -262,8 +262,7 @@ class Server(object):
         # init_net(self.model, **self.init_config)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...successfully initialized model (# parameters: {str(sum(p.numel() for p in self.adapt_model.model.parameters()))})!"
-        print(message);
-        logging.info(message)
+        show_info(message)
         del message;
         gc.collect()
 
@@ -287,8 +286,7 @@ class Server(object):
             clients.append(client)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...successfully created all {str(self.num_clients)} clients!"
-        print(message)
-        logging.info(message)
+        show_info(message)
         del message
         gc.collect()
         return clients
@@ -299,8 +297,7 @@ class Server(object):
             client.setup(args)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...successfully finished setup of all {str(self.num_clients)} clients!"
-        print(message)
-        logging.info(message)
+        show_info(message)
         del message
         gc.collect()
 
@@ -318,8 +315,7 @@ class Server(object):
                 client.adapt_model.transmit(self.adapt_model)
 
         message = f"[Round: {str(self._round).zfill(4)}] ...successfully transmitted models to all {str(self.num_clients)} clients!"
-        print(message)
-        logging.info(message)
+        show_info(message)
         del message
         gc.collect()
 
@@ -327,8 +323,7 @@ class Server(object):
         """Select some fraction of all clients."""
         # sample clients randommly
         message = f"[Round: {str(self._round).zfill(4)}] Select clients...!"
-        print(message)
-        logging.info(message)
+        show_info(message)
         del message
         gc.collect()
 
@@ -341,8 +336,7 @@ class Server(object):
     def average_model(self, coefficients):
         """Average the updated and transmitted parameters from each selected client."""
         message = f"[Round: {str(self._round).zfill(4)}] Aggregate updated weights of {len(self.clients)} clients...!"
-        print(message)
-        logging.info(message)
+        show_info(message)
         del message
         gc.collect()
 
@@ -372,19 +366,21 @@ class Server(object):
 
         message = f"[Round: {str(self._round).zfill(4)}] ...updated weights of {len(self.clients)} clients are " \
                   f"successfully averaged!"
-        print(message)
-        logging.info(message)
+        show_info(message)
         del message
         gc.collect()
 
     def evaluate_selected_models(self):
         """Call "client_evaluate" function of each selected client."""
-
+        accs=[]
         for idx in range(len(self.clients)):
             acc = self.clients[idx].client_evaluate()
-            message = f"[Round: {str(self._round).zfill(4)}] ... clients are successfully averaged! acc:{acc:.2f}%"
-            print(message)
-            logging.info(message)
+            message = f"[Round: {str(self._round).zfill(4)}] ... clients{idx} are successfully evaluate! acc:{acc:.2f}%"
+            show_info(message)
+            accs.append(acc)
+        message= f"[Round: {str(self._round).zfill(4)}] ...{len(self.clients)} clients are " \
+                    f"successfully evaluate! acc:{np.mean(accs).item():.2f}%"
+        show_info(message)
 
     def train_server_model(self):
         """Do training on the server model."""
@@ -403,7 +399,8 @@ class Server(object):
                 optimizer.step()
 
                 if idx % 100 == 0:
-                    print(f"Epoch: {epoch}, Batch: {idx}, Loss: {loss.item():.4f}")
+                    message=f"Epoch: {epoch}, Batch: {idx}, Loss: {loss.item():.4f}"
+                    show_info(message)
 
     def train_federated_model(self):
         """Do federated training."""
@@ -422,25 +419,21 @@ class Server(object):
         # average each updated model parameters of the selected clients and update the global model
         if self.args.Federated:
             message = f"[Round: {str(self._round).zfill(4)}] Average updated weights of {len(self.clients)} clients...!"
-            print(message)
-            logging.info(message)
+            show_info(message)
 
             self.average_model(mixing_coefficients)
 
             message = f"[Round: {str(self._round).zfill(4)}] ...updated weights of {len(self.clients)} clients are successfully averaged!"
-            print(message)
-            logging.info(message)
+            show_info(message)
 
         if self.args.train_server:
             message = f"[Round: {str(self._round).zfill(4)}] Train server model...!"
-            print(message)
-            logging.info(message)
+            show_info(message)
 
             self.train_server_model()
 
             message = f"[Round: {str(self._round).zfill(4)}] ...server model is successfully trained!"
-            print(message)
-            logging.info(message)
+            show_info(message)
 
     def fit(self):
         """Execute the whole process of the federated learning."""

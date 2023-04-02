@@ -17,6 +17,11 @@ from src.data import load_imagenet_c
 logger = logging.getLogger(__name__)
 
 
+def show_info(message):
+    print(message)
+    logging.info(message)
+
+
 #######################
 # TensorBaord setting #
 #######################

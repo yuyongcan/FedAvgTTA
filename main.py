@@ -35,7 +35,7 @@ def get_args():
                         choices=[x.value for x in ThreatModel])
     parser.add_argument('--dataset',
                         type=str,
-                        default='cifar10',
+                        default='imagenet',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
     parser.add_argument('--algorithm', default='tent', type=str,
@@ -56,7 +56,7 @@ def get_args():
     parser.add_argument('--if_shuffle', default=True, type=bool, help='if shuffle the test set.')
 
     # model parameters
-    parser.add_argument('--arch', default='vit_base_patch16_224',
+    parser.add_argument('--arch', default='Standard_R50',
                         choices=['Standard_R50', 'vit_base_patch16_224', 'visformer_small'], type=str,
                         help='the default model architecture')
 
@@ -94,7 +94,7 @@ def get_args():
     parser.add_argument('--ap', type=float, default=0.92)
 
     # FL parameters
-    parser.add_argument('--local_batches', default=50, type=int, help='corruption level of test(val) set.')
+    parser.add_argument('--local_batches', default=250, type=int, help='corruption level of test(val) set.')
     parser.add_argument('--Federated', default=True, type=bool, help='Federated test time adaptation or not')
     # parser.add_argument('--dataloder_path', default='./iter_dataloders', type=str, help='the path to save and load fixed dataloders')
     parser.add_argument('--Fed_algorithm', default='FedAvg', type=str, choices=['FedAvg', 'FedProx', 'FedBNM'],
@@ -116,7 +116,7 @@ if __name__ == "__main__":
                                  str(args.Federated)+'_'+str(args.local_batches))
 
     # initiate TensorBaord for tracking losses and metrics
-    writer = SummaryWriter(log_dir=args.log_path, filename_suffix="FL")
+    # writer = SummaryWriter(log_dir=args.log_path, filename_suffix="FL")
     # tb_thread = threading.Thread(
     #     target=launch_tensor_board,
     #     args=([log_config["log_path"], log_config["tb_port"], log_config["tb_host"]])
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     # set the configuration of global logger
     logger = logging.getLogger(__name__)
     logging.basicConfig(
-        filename=os.path.join(args.log_path, args.log_name),
+        filename=os.path.join(args.log_path, str(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))+args.log_name),
         level=logging.INFO,
         format="[%(levelname)s](%(asctime)s) %(message)s",
         datefmt="%Y/%m/%d/ %I:%M:%S %p")
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     print()
 
     # initialize federated learning 
-    central_server = Server(writer, args)
+    central_server = Server(args)
     central_server.setup()
 
     # do federated learning

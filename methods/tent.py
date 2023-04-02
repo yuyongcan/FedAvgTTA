@@ -11,7 +11,6 @@ import torch.jit
 
 # from torch.autograd import Variable
 
-
 class Tent(nn.Module):
     """Tent adapts a model by entropy minimization during testing.
     Once tented, a model adapts itself by updating on every forward.

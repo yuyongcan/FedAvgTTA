@@ -23,7 +23,8 @@ def get_args():
     parser = argparse.ArgumentParser(description='PyTorch ImageNet-C Testing')
 
     # dataset loading, output dir
-    parser.add_argument('--data_dir', default='/data2/yongcan.yu/datasets', help='the path of data to download and load')
+    parser.add_argument('--data_dir', default='/data2/yongcan.yu/datasets',
+                        help='the path of data to download and load')
     parser.add_argument('--imagenetc_dir', default='/data2/yongcan.yu/datasets/ImageNet-C',
                         help='the dir of imagenetc dataset')
     # parser.add_argument('--imagenetc_mode', default='full', choices=['full', 'part'])
@@ -59,7 +60,6 @@ def get_args():
     parser.add_argument('--arch', default='Standard_R50',
                         choices=['Standard_R50', 'vit_base_patch16_224', 'visformer_small'], type=str,
                         help='the default model architecture')
-
 
     # dataset settings
     parser.add_argument('--severity', default=5, type=int, help='corruption level of test(val) set.')
@@ -112,9 +112,10 @@ if __name__ == "__main__":
     args = get_args()
     args.common_corruptions = corruptions
     # modify log_path to contain current time
-    args.log_path = os.path.join(args.output, args.dataset, args.Fed_algorithm+'_'+args.algorithm,
-                                 str(args.Federated)+'_'+str(args.local_batches))
-
+    args.log_path = os.path.join(args.output, args.dataset, args.Fed_algorithm + '_' + args.algorithm,
+                                 str(args.Federated) + '_' + str(args.local_batches))
+    if not os.path.exists(args.log_path):
+        os.makedirs(args.log_path)
     # initiate TensorBaord for tracking losses and metrics
     # writer = SummaryWriter(log_dir=args.log_path, filename_suffix="FL")
     # tb_thread = threading.Thread(
@@ -126,10 +127,12 @@ if __name__ == "__main__":
     # set the configuration of global logger
     logger = logging.getLogger(__name__)
     logging.basicConfig(
-        filename=os.path.join(args.log_path, str(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))+args.log_name),
+        filename=os.path.join(args.log_path,
+                              str(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")) + args.log_name),
         level=logging.INFO,
         format="[%(levelname)s](%(asctime)s) %(message)s",
-        datefmt="%Y/%m/%d/ %I:%M:%S %p")
+        datefmt="%Y/%m/%d/ %I:%M:%S %p",
+        force=True)
 
     # display and log experiment configuration
     message = "\n[WELCOME] Unfolding configurations...!"

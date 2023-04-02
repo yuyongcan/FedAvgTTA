@@ -18,6 +18,8 @@ from methods import tent, cotta, eata
 import timm
 import torchvision.transforms
 from src.utils import show_info
+import time
+
 logger = logging.getLogger(__name__)
 
 datasets_path = {'imagenet': '/data2/yongcan.yu/datasets/imagenet',

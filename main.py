@@ -23,8 +23,8 @@ def get_args():
     parser = argparse.ArgumentParser(description='PyTorch ImageNet-C Testing')
 
     # dataset loading, output dir
-    parser.add_argument('--data_dir', default='/data/yongcan.yu/datasets', help='the path of data to download and load')
-    parser.add_argument('--imagenetc_dir', default='/data/yongcan.yu/datasets/ImageNet-C',
+    parser.add_argument('--data_dir', default='/data2/yongcan.yu/datasets', help='the path of data to download and load')
+    parser.add_argument('--imagenetc_dir', default='/data2/yongcan.yu/datasets/ImageNet-C',
                         help='the dir of imagenetc dataset')
     # parser.add_argument('--imagenetc_mode', default='full', choices=['full', 'part'])
     parser.add_argument('--ckpt_dir', default='./ckpt', help='the path of model to download and load')
@@ -41,19 +41,18 @@ def get_args():
     parser.add_argument('--algorithm', default='tent', type=str,
                         choices=['source', 'norm', 'eata', 'tent', 'cotta', 'tent_ps', 'tent_psp', 'eata_m', 'ema'],
                         help='eata or eta or tent')
-    # parser.add_argument('--parameters_update', default='grad', type=str,
-    #                     choices=['BN', 'CLS', 'bias', 'all', 'random','grad'],
-    #                     help='the parameters will be updated')
-    # parser.add_argument('--random_update', default=0., type=float,
-    #                     # choices=['BN', 'CLS', 'bias', 'all', 'random'],
-    #                     help='the proportion of the parameters will be updated')
-    # parser.add_argument('--grad_threshold', type=float, default=5e-5)
+
     # general parameters, dataloader parameters
     parser.add_argument('--log_name', default='output.txt', type=str)
     parser.add_argument('--seed', default=2020, type=int, help='seed for initializing training. ')
     parser.add_argument('--gpu', default='7', type=str, help='GPU id to use.')
     parser.add_argument('--workers', default=4, type=int, help='number of data loading workers (default: 4)')
     parser.add_argument('--batch_size', default=64, type=int, help='mini-batch size (default: 64)')
+
+    parser.add_argument('--server_epochs', default=1, type=int, help='number of total epochs to run on server')
+    parser.add_argument('--server_batch_size', default=64, type=int, help='server batch size (default: 64)')
+    parser.add_argument('--server_lr', default=5e-4, type=float, help='server learning rate')
+
     parser.add_argument('--if_shuffle', default=True, type=bool, help='if shuffle the test set.')
 
     # model parameters
@@ -61,17 +60,9 @@ def get_args():
                         choices=['Standard_R50', 'vit_base_patch16_224', 'visformer_small'], type=str,
                         help='the default model architecture')
 
-    # experiment mode setting
-    # parser.add_argument('--exp_type', default='full', type=str,
-    #                     choices=["continual", "A_S", "batch_level_corruption", 'full', 'adapt_ten_times'],
-    #                     help='continual or each_shift_reset')
 
     # dataset settings
-    # parser.add_argument('--corruption_order_index', type=int, default=0, help='the order of the corruptions to adapt')
     parser.add_argument('--severity', default=5, type=int, help='corruption level of test(val) set.')
-    # parser.add_argument('--corruption', default='gaussian_noise', type=str, help='corruption type of test(val) set.')
-    # parser.add_argument('--rotation', default=False, type=bool,
-    #                     help='if use the rotation ssl task for training (this is TTTs dataloader).')
 
     # eata settings
     parser.add_argument('--fisher_clip_by_norm', type=float, default=10.0, help='Clip fisher before it is too large')
@@ -82,12 +73,13 @@ def get_args():
     parser.add_argument('--e_margin', type=float, default=math.log(1000) * 0.40,
                         help='entropy margin E_0 in Eqn. (3) for filtering reliable samples')
     parser.add_argument('--d_margin', type=float, default=0.05,
-                        help='\epsilon in Eqn. (5) for filtering redundant samples')
+                        help='epsilon in Eqn. (5) for filtering redundant samples')
 
-    # 'cotinual' means the model parameters will never be reset, also called online adaptation;
-    # 'each_shift_reset' means after each type of distribution shift, e.g., ImageNet-C Gaussian Noise Level 5, the model parameters will be reset.
+    # 'continual' means the model parameters will never be reset, also called online adaptation; 'each_shift_reset'
+    # means after each type of distribution shift, e.g., ImageNet-C Gaussian Noise Level 5, the model parameters will
+    # be reset.
 
-    # optimize hyper parameters
+    # optimize hyperparameters
     parser.add_argument('--optimizer', type=str, default='Adam',
                         choices=['Adam', 'SGD'],
                         help='the optimizer used under adaptation')
@@ -105,12 +97,14 @@ def get_args():
     parser.add_argument('--local_batches', default=50, type=int, help='corruption level of test(val) set.')
     parser.add_argument('--Federated', default=True, type=bool, help='Federated test time adaptation or not')
     # parser.add_argument('--dataloder_path', default='./iter_dataloders', type=str, help='the path to save and load fixed dataloders')
-    parser.add_argument('--Fed_algorithm', default='FedProx', type=str, choices=['FedAvg', 'FedProx'],
+    parser.add_argument('--Fed_algorithm', default='FedAvg', type=str, choices=['FedAvg', 'FedProx', 'FedBNM'],
                         help='the algorithm used for Federated Learning')
+    parser.add_argument('--train_server', default=True, type=bool, help='train the server model or not')
 
     # FedProx parameters
     parser.add_argument('--mu', default=0.01, type=float,
                         help='the weight of loss of regularization')
+
     return parser.parse_args()
 
 
@@ -119,7 +113,7 @@ if __name__ == "__main__":
     args.common_corruptions = corruptions
     # modify log_path to contain current time
     args.log_path = os.path.join(args.output, args.dataset, args.Fed_algorithm+'_'+args.algorithm,
-                                 str(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))+'_'+str(args.local_batches))
+                                 str(args.Federated)+'_'+str(args.local_batches))
 
     # initiate TensorBaord for tracking losses and metrics
     writer = SummaryWriter(log_dir=args.log_path, filename_suffix="FL")
@@ -161,7 +155,7 @@ if __name__ == "__main__":
 
     # bye!
     message = "...done all learning process!\n...exit program!"
-    print(message);
+    print(message)
     logging.info(message)
-    time.sleep(3);
+    # time.sleep(3);
     exit()

@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
 from typing import Callable, Dict, Optional, Sequence, Set, Tuple
+
+import torchvision
+
 from dataset.selectedRotateImageFolder import SelectedRotateImageFolder
 import numpy as np
 import torch
@@ -22,24 +25,61 @@ PREPROCESSINGS = {
     'none': transforms.Compose([transforms.ToTensor()]),
 }
 
+datasets_path = {'imagenet': '/data2/yongcan.yu/datasets/imagenet',
+                 'cifar10': '/data2/yongcan.yu/datasets',
+                 'cifar100': "/data2/yongcan.yu/datasets"}
+
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-tr_transforms = transforms.Compose([transforms.RandomResizedCrop(224),
-									transforms.RandomHorizontalFlip(),
+
+train_transforms = {
+    'cifar10': transforms.Compose([transforms.RandomHorizontalFlip(),
+                                   transforms.RandomGrayscale(),
+                                   transforms.ToTensor(),
+                                   transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]),
+    'cifar100': transforms.Compose([transforms.RandomHorizontalFlip(),
+                                    transforms.RandomGrayscale(),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]),
+    'imagenet': transforms.Compose([transforms.RandomResizedCrop(224),
+                                    transforms.RandomHorizontalFlip(),
                                     # transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2),
-									transforms.ToTensor(),
-									normalize])
+                                    transforms.ToTensor(),
+                                    normalize])
+}
+
+tr_transforms = transforms.Compose([transforms.RandomResizedCrop(224),
+                                    transforms.RandomHorizontalFlip(),
+                                    # transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2),
+                                    transforms.ToTensor(),
+                                    normalize])
 te_transforms = transforms.Compose([transforms.Resize(256),
-									transforms.CenterCrop(224),
-									transforms.ToTensor(),
-									normalize])
+                                    transforms.CenterCrop(224),
+                                    transforms.ToTensor(),
+                                    normalize])
 
 # above transform is from TTT, the below is based on original ImageNet-C.
 te_transforms_imageC = transforms.Compose([transforms.CenterCrop(224),
-									transforms.ToTensor(),
-									normalize])
+                                           transforms.ToTensor(),
+                                           normalize])
 
 rotation_tr_transforms = tr_transforms
 rotation_te_transforms = te_transforms
+
+
+def load_server_data(args):
+    if args.dataset == 'cifar10':
+        trainset = datasets.CIFAR10(root=datasets_path['cifar10'], train=True, download=True, transform=train_transforms['cifar10'])
+    elif args.dataset == 'cifar100':
+        trainset = datasets.CIFAR100(root=datasets_path['cifar100'], train=True, download=True, transform=train_transforms['cifar100'])
+    elif args.dataset == 'imagenet':
+        trainset = torchvision.datasets.ImageNet(root=datasets_path['imagenet'], split='val',
+                                                transform=te_transforms)
+    else:
+        raise NotImplementedError
+    dataloader = data.DataLoader(trainset, batch_size=args.server_batch_size, shuffle=True, num_workers=4)
+    return trainset, dataloader
+
+
 def _load_dataset(
         dataset: Dataset,
         n_examples: Optional[int] = None) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -105,7 +145,7 @@ def load_imagenet(
 
 
 CleanDatasetLoader = Callable[[Optional[int], str], Tuple[torch.Tensor,
-                                                          torch.Tensor]]
+torch.Tensor]]
 _clean_dataset_loaders: Dict[BenchmarkDataset, CleanDatasetLoader] = {
     BenchmarkDataset.cifar_10: load_cifar10,
     BenchmarkDataset.cifar_100: load_cifar100,
@@ -172,7 +212,6 @@ def load_imagenetc(
     assert len(
         corruptions) == 1, "so far only one corruption is supported (that's how this function is called in eval.py"
 
-
     data_folder_path = Path(data_dir) / CORRUPTIONS_DIR_NAMES[BenchmarkDataset.imagenet] / corruptions[0] / str(
         severity)
     imagenet = CustomImageFolder(data_folder_path, transforms_test)
@@ -186,7 +225,7 @@ def load_imagenetc(
 
 
 CorruptDatasetLoader = Callable[[int, int, str, bool, Sequence[str]],
-                                Tuple[torch.Tensor, torch.Tensor]]
+Tuple[torch.Tensor, torch.Tensor]]
 CORRUPTION_DATASET_LOADERS: Dict[BenchmarkDataset, CorruptDatasetLoader] = {
     BenchmarkDataset.cifar_10: load_cifar10c,
     BenchmarkDataset.cifar_100: load_cifar100c,
@@ -255,7 +294,8 @@ def load_imagenet_c(args, corruption, level):
     print('load imagenetc on %s level %d' % (corruption, level))
     validdir = os.path.join(args.imagenetc_dir, corruption, str(level))
     teset = SelectedRotateImageFolder(validdir, transforms.Compose([transforms.CenterCrop(224),
-									transforms.ToTensor()]),original=False,rotation=False,rotation_transform=rotation_te_transforms)
+                                                                    transforms.ToTensor()]), original=False,
+                                      rotation=False, rotation_transform=rotation_te_transforms)
     # if not hasattr(args, 'workers'):
     # args.workers = 1
     teloader = torch.utils.data.DataLoader(teset, batch_size=args.batch_size, shuffle=args.if_shuffle,

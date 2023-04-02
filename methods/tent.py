@@ -60,6 +60,9 @@ class Tent(nn.Module):
             self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
             self.global_model = adapt_model.model
 
+    def to(self,device):
+        self.model.to(device)
+
 
 @torch.jit.script
 def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
@@ -101,7 +104,7 @@ def forward_and_adapt(x, model, optimizer, global_model=None,args=None):
         proximal_term=0.
         for w, w_t in zip(model.parameters(), global_model.parameters()):
             proximal_term += (w - w_t).norm(2)
-        loss+=args.mu/2*proximal_term
+        loss += args.mu / 2 * proximal_term
     # loss_global = 1*softmax_entropy(torch.mean(outputs,dim=0,keepdim=True)).mean(0)
     # loss_global=mean_softmax_entropy(outputs)
     # loss -=0.2*loss_global

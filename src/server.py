@@ -7,6 +7,7 @@ from torch import optim
 from tqdm.auto import tqdm
 from collections import OrderedDict
 
+from .data import load_server_data
 # from .models import *
 from .utils import *
 from .client import Client
@@ -140,7 +141,7 @@ class Server(object):
                                             momentum=0.9)
             else:
                 optimizer = torch.optim.Adam(params, 0.001)
-            adapt_model = tent.Tent(subnet, optimizer,args=args)
+            adapt_model = tent.Tent(subnet, optimizer, args=args)
         elif args.algorithm == 'cotta':
             if args.dataset == 'imagenet':
                 args.lr = 0.01
@@ -232,7 +233,7 @@ class Server(object):
 
             optimizer = torch.optim.SGD(params, args.lr, momentum=0.9)
             adapt_model = eata.EATA(subnet, optimizer, fishers, args.fisher_alpha, e_margin=args.e_margin,
-                                    d_margin=args.d_margin)
+                                    d_margin=args.d_margin, args=args)
         else:
             assert False, NotImplementedError
         self.adapt_model = adapt_model
@@ -303,7 +304,7 @@ class Server(object):
         del message
         gc.collect()
 
-    def transmit_model(self,init=False):
+    def transmit_model(self, init=False):
         """Send the updated global model to selected/all clients."""
 
         # send the global model to all clients before the very first and after the last federated round
@@ -369,7 +370,8 @@ class Server(object):
         if hasattr(self.adapt_model, 'model_ema'):
             self.adapt_model.model_ema.load_state_dict(averaged_weights_ema)
 
-        message = f"[Round: {str(self._round).zfill(4)}] ...updated weights of {len(self.clients)} clients are successfully averaged!"
+        message = f"[Round: {str(self._round).zfill(4)}] ...updated weights of {len(self.clients)} clients are " \
+                  f"successfully averaged!"
         print(message)
         logging.info(message)
         del message
@@ -380,9 +382,28 @@ class Server(object):
 
         for idx in range(len(self.clients)):
             acc = self.clients[idx].client_evaluate()
-            message = f"[Round: {str(self._round).zfill(4)}] ...evaluate weights of {idx} clients are successfully averaged! acc:{acc:.2f}%"
+            message = f"[Round: {str(self._round).zfill(4)}] ... clients are successfully averaged! acc:{acc:.2f}%"
             print(message)
             logging.info(message)
+
+    def train_server_model(self):
+        """Do training on the server model."""
+        dataset, dataloader = load_server_data(self.args)
+        model = self.adapt_model.model
+        criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.SGD([param for param in model.parameters() if param.requires_grad],
+                                    lr=self.args.server_lr, momentum=0.9)
+        for epoch in range(self.args.server_epochs):
+            for idx, (images, labels) in enumerate(dataloader):
+                images, labels = images.to(self.device), labels.to(self.device)
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+                model.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                if idx % 100 == 0:
+                    print(f"Epoch: {epoch}, Batch: {idx}, Loss: {loss.item():.4f}")
 
     def train_federated_model(self):
         """Do federated training."""
@@ -400,7 +421,26 @@ class Server(object):
 
         # average each updated model parameters of the selected clients and update the global model
         if self.args.Federated:
+            message = f"[Round: {str(self._round).zfill(4)}] Average updated weights of {len(self.clients)} clients...!"
+            print(message)
+            logging.info(message)
+
             self.average_model(mixing_coefficients)
+
+            message = f"[Round: {str(self._round).zfill(4)}] ...updated weights of {len(self.clients)} clients are successfully averaged!"
+            print(message)
+            logging.info(message)
+
+        if self.args.train_server:
+            message = f"[Round: {str(self._round).zfill(4)}] Train server model...!"
+            print(message)
+            logging.info(message)
+
+            self.train_server_model()
+
+            message = f"[Round: {str(self._round).zfill(4)}] ...server model is successfully trained!"
+            print(message)
+            logging.info(message)
 
     def fit(self):
         """Execute the whole process of the federated learning."""

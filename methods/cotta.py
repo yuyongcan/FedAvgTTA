@@ -61,6 +61,7 @@ class CoTTA(nn.Module):
     def __init__(self, model, optimizer, steps=1, episodic=False, args=None):
         super().__init__()
         self.model = model
+        self.global_model = None
         self.args = args
         self.optimizer = optimizer
         self.steps = steps
@@ -142,6 +143,13 @@ class CoTTA(nn.Module):
             self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
             self.model_ema.load_state_dict(deepcopy(adapt_model.model_ema.state_dict()))
             self.global_model = adapt_model.model
+
+    def to(self, device):
+        self.model.to(device)
+        self.model_anchor.to(device)
+        self.model_ema.to(device)
+        if self.global_model:
+            self.global_model.to(device)
 
 
 @torch.jit.script

@@ -12,13 +12,6 @@ import pickle
 
 logger = logging.getLogger(__name__)
 
-def adapt_model_to(adapt_model, device):
-    adapt_model.model.to(device)
-    if hasattr(adapt_model,'model_ema'):
-        adapt_model.model_ema.to(device)
-    if hasattr(adapt_model,'model_anchor'):
-        adapt_model.model_anchor.to(device)
-
 class Client(object):
     """Class for client object having its own (private) data and resources to train a model.
 
@@ -77,7 +70,7 @@ class Client(object):
 
     def client_evaluate(self):
         """Evaluate local model using local dataset (same as training set for convenience)."""
-        adapt_model_to(self.adapt_model,self.device)
+        self.adapt_model.to(self.device)
 
         # correct=0
         for i in range(self.batches_per_round):
@@ -92,11 +85,11 @@ class Client(object):
                     self.top1.update(100. * correct / self.batch_size, data.size(0))
                 except StopIteration:
                     message=f"client {self.id} finished adaptation"
-                    print(message);
+                    print(message)
                     logging.info(message)
                     if self.device == "cuda": torch.cuda.empty_cache()
                     break
                 if self.device == "cuda": torch.cuda.empty_cache()
-        adapt_model_to(self.adapt_model,'cpu')
+        self.adapt_model.to('cpu')
 
         return self.top1.avg

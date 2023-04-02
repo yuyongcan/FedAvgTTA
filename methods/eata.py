@@ -18,8 +18,12 @@ class EATA(nn.Module):
     """EATA adapts a model by entropy minimization during testing.
     Once EATAed, a model adapts itself by updating on every forward.
     """
-    def __init__(self, model, optimizer, fishers=None, fisher_alpha=2000.0, steps=1, episodic=False, e_margin=math.log(1000)/2-1, d_margin=0.05):
+
+    def __init__(self, model, optimizer, fishers=None, fisher_alpha=2000.0, steps=1, episodic=False,
+                 e_margin=math.log(1000) / 2 - 1, d_margin=0.05, args=None):
         super().__init__()
+        self.global_model = None
+        self.args = args
         self.model = model
         self.optimizer = optimizer
         self.steps = steps
@@ -28,13 +32,13 @@ class EATA(nn.Module):
 
         self.num_samples_update_1 = 0  # number of samples after First filtering, exclude unreliable samples
         self.num_samples_update_2 = 0  # number of samples after Second filtering, exclude both unreliable and redundant samples
-        self.e_margin = e_margin # hyper-parameter E_0 (Eqn. 3)
-        self.d_margin = d_margin # hyper-parameter \epsilon for consine simlarity thresholding (Eqn. 5)
+        self.e_margin = e_margin  # hyper-parameter E_0 (Eqn. 3)
+        self.d_margin = d_margin  # hyper-parameter \epsilon for consine simlarity thresholding (Eqn. 5)
 
-        self.current_model_probs = None # the moving average of probability vector (Eqn. 4)
+        self.current_model_probs = None  # the moving average of probability vector (Eqn. 4)
 
-        self.fishers = fishers # fisher regularizer items for anti-forgetting, need to be calculated pre model adaptation (Eqn. 9)
-        self.fisher_alpha = fisher_alpha # trade-off \beta for two losses (Eqn. 8) 
+        self.fishers = fishers  # fisher regularizer items for anti-forgetting, need to be calculated pre model adaptation (Eqn. 9)
+        self.fisher_alpha = fisher_alpha  # trade-off \beta for two losses (Eqn. 8)
 
         # note: if the model is never reset, like for continual adaptation,
         # then skipping the state copy would save memory
@@ -46,7 +50,15 @@ class EATA(nn.Module):
             self.reset()
         if self.steps > 0:
             for _ in range(self.steps):
-                outputs, num_counts_2, num_counts_1, updated_probs = forward_and_adapt_eata(x, self.model, self.optimizer, self.fishers, self.e_margin, self.current_model_probs, fisher_alpha=self.fisher_alpha, num_samples_update=self.num_samples_update_2, d_margin=self.d_margin)
+                outputs, num_counts_2, num_counts_1, updated_probs = forward_and_adapt_eata(x, self.model,
+                                                                                            self.optimizer,
+                                                                                            self.fishers, self.e_margin,
+                                                                                            self.current_model_probs,
+                                                                                            fisher_alpha=self.fisher_alpha,
+                                                                                            num_samples_update=self.num_samples_update_2,
+                                                                                            d_margin=self.d_margin,\
+                                                                                            args=self.args,
+                                                                                            global_model=self.global_model)
                 self.num_samples_update_2 += num_counts_2
                 self.num_samples_update_1 += num_counts_1
                 self.reset_model_probs(updated_probs)
@@ -68,18 +80,29 @@ class EATA(nn.Module):
     def reset_model_probs(self, probs):
         self.current_model_probs = probs
 
+    def transmit(self, adapt_model):
+        if self.args.Fed_algorithm == 'FedAvg':
+            self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
+        elif self.args.Fed_algorithm == 'FedProx':
+            self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
+            self.global_model = adapt_model.model
+
+    def to(self, device):
+        self.model.to(device)
+
 
 @torch.jit.script
 def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
     """Entropy of softmax distribution from logits."""
     temprature = 1
-    x = x/ temprature
+    x = x / temprature
     x = -(x.softmax(1) * x.log_softmax(1)).sum(1)
     return x
 
 
 @torch.enable_grad()  # ensure grads in possible no grad context for testing
-def forward_and_adapt_eata(x, model, optimizer, fishers, e_margin, current_model_probs, fisher_alpha=50.0, d_margin=0.05, scale_factor=2, num_samples_update=0):
+def forward_and_adapt_eata(x, model, optimizer, fishers, e_margin, current_model_probs, fisher_alpha=50.0,
+                           d_margin=0.05, args=None, global_model=None, num_samples_update=0):
     """Forward and adapt model on batch of data.
     Measure entropy of the model prediction, take gradients, and update params.
     Return: 
@@ -95,11 +118,12 @@ def forward_and_adapt_eata(x, model, optimizer, fishers, e_margin, current_model
     # filter unreliable samples
     filter_ids_1 = torch.where(entropys < e_margin)
     ids1 = filter_ids_1
-    ids2 = torch.where(ids1[0]>-0.1)
-    entropys = entropys[filter_ids_1] 
+    ids2 = torch.where(ids1[0] > -0.1)
+    entropys = entropys[filter_ids_1]
     # filter redundant samples
-    if current_model_probs is not None: 
-        cosine_similarities = F.cosine_similarity(current_model_probs.unsqueeze(dim=0), outputs[filter_ids_1].softmax(1), dim=1)
+    if current_model_probs is not None:
+        cosine_similarities = F.cosine_similarity(current_model_probs.unsqueeze(dim=0),
+                                                  outputs[filter_ids_1].softmax(1), dim=1)
         filter_ids_2 = torch.where(torch.abs(cosine_similarities) < d_margin)
         entropys = entropys[filter_ids_2]
         ids2 = filter_ids_2
@@ -108,7 +132,7 @@ def forward_and_adapt_eata(x, model, optimizer, fishers, e_margin, current_model
         updated_probs = update_model_probs(current_model_probs, outputs[filter_ids_1].softmax(1))
     coeff = 1 / (torch.exp(entropys.clone().detach() - e_margin))
     # implementation version 1, compute loss, all samples backward (some unselected are masked)
-    entropys = entropys.mul(coeff) # reweight entropy losses for diff. samples
+    entropys = entropys.mul(coeff)  # reweight entropy losses for diff. samples
     loss = entropys.mean(0)
     """
     # implementation version 2, compute loss, forward all batch, forward and backward selected samples again.
@@ -119,8 +143,13 @@ def forward_and_adapt_eata(x, model, optimizer, fishers, e_margin, current_model
         ewc_loss = 0
         for name, param in model.named_parameters():
             if name in fishers:
-                ewc_loss += fisher_alpha * (fishers[name][0] * (param - fishers[name][1])**2).sum()
+                ewc_loss += fisher_alpha * (fishers[name][0] * (param - fishers[name][1]) ** 2).sum()
         loss += ewc_loss
+    if args.Fed_algorithm == 'FedProx' and args.Federated:
+        proximal_term = 0.
+        for w, w_t in zip(model.parameters(), global_model.parameters()):
+            proximal_term += (w - w_t).norm(2)
+        loss += args.mu / 2 * proximal_term
     if x[ids1][ids2].size(0) != 0:
         loss.backward()
         optimizer.step()
@@ -192,6 +221,7 @@ def configure_model(model):
         if isinstance(m, nn.LayerNorm):
             m.requires_grad_(True)
     return model
+
 
 def check_model(model):
     """Check model for compatability with eata."""

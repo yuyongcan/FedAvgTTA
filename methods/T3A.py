@@ -8,18 +8,19 @@ class T3A(nn.Module):
     """
     Test Time Template Adjustments (T3A)
     """
-
-    def __init__(self, num_classes,hparams,model):
+    def __init__(self, hparams,model):
         super().__init__()
+        self.hparams = hparams
         modules= list(model.children())[:-1]
         self.featurizer = nn.Sequential(*modules)
-        self.classifier = model.children()[-1]
+        self.classifier = list(model.children())[-1]
+        num_classes = self.classifier.out_features
 
         warmup_supports = self.classifier.weight.data
-        self.warmup_supports = warmup_supports
+        self.warmup_supports = warmup_supports.detach()
         warmup_prob = self.classifier(self.warmup_supports)
-        self.warmup_ent = softmax_entropy(warmup_prob)
-        self.warmup_labels = torch.nn.functional.one_hot(warmup_prob.argmax(1), num_classes=num_classes).float()
+        self.warmup_ent = softmax_entropy(warmup_prob).detach()
+        self.warmup_labels = torch.nn.functional.one_hot(warmup_prob.argmax(1), num_classes).float().detach()
 
         self.supports = self.warmup_supports.data
         self.labels = self.warmup_labels.data
@@ -31,7 +32,7 @@ class T3A(nn.Module):
 
     def forward(self, x, adapt=False):
         if not self.hparams['cached_loader']:
-            z = self.featurizer(x)
+            z = self.featurizer(x).squeeze()
         else:
             z = x
         if adapt:
@@ -44,9 +45,9 @@ class T3A(nn.Module):
             self.supports = self.supports.to(z.device)
             self.labels = self.labels.to(z.device)
             self.ent = self.ent.to(z.device)
-            self.supports = torch.cat([self.supports, z])
-            self.labels = torch.cat([self.labels, yhat])
-            self.ent = torch.cat([self.ent, ent])
+            self.supports = torch.cat([self.supports, z.detach()])
+            self.labels = torch.cat([self.labels, yhat.detach()])
+            self.ent = torch.cat([self.ent, ent.detach()])
 
         supports, labels = self.select_supports()
         supports = torch.nn.functional.normalize(supports, dim=1)
@@ -72,3 +73,8 @@ class T3A(nn.Module):
         self.ent = self.ent[indices]
 
         return self.supports, self.labels
+
+    def transmit(self,adapt_model):
+        self.supports=adapt_model.supports
+        self.labels=adapt_model.labels
+        self.ent=adapt_model.ent

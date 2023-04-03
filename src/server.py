@@ -7,6 +7,7 @@ from torch import optim
 from tqdm.auto import tqdm
 from collections import OrderedDict
 
+from methods.T3A import T3A
 from utils.cli_utils import AverageMeter, ProgressMeter
 from .data import load_server_data
 # from .models import *
@@ -145,6 +146,9 @@ class Server(object):
             else:
                 optimizer = torch.optim.Adam(params, 0.001)
             adapt_model = tent.Tent(subnet, optimizer, args=args)
+        elif args.algorithm == 'T3A':
+            adapt_hparam = {'filter_K': 20,'cached_loader':False}
+            adapt_model = T3A(adapt_hparam, subnet)
         elif args.algorithm == 'cotta':
             if args.dataset == 'imagenet':
                 args.lr = 0.01
@@ -263,8 +267,10 @@ class Server(object):
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
         # init_net(self.model, **self.init_config)
-
-        message = f"[Round: {str(self._round).zfill(4)}] ...successfully initialized model (# parameters: {str(sum(p.numel() for p in self.adapt_model.model.parameters()))})!"
+        if self.args.algorithm != 'T3A':
+            message = f"[Round: {str(self._round).zfill(4)}] ...successfully initialized model (# parameters: {str(sum(p.numel() for p in self.adapt_model.model.parameters()))})!"
+        else:
+            message = f"[Round: {str(self._round).zfill(4)}] ...successfully initialized model (# parameters: {str(sum(p.numel() for p in self.adapt_model.parameters()))})!"
         show_info(message)
         del message;
         gc.collect()
@@ -283,23 +289,23 @@ class Server(object):
 
     def configure_model(self, model):
         """Configure model for federated learning."""
-        args=self.args
-        if args.server_update_mode=='BN':
+        args = self.args
+        if args.server_update_mode == 'BN':
             for name, param in model.named_parameters():
                 if 'bn' in name:
                     param.requires_grad = True
                 else:
                     param.requires_grad = False
-        elif args.server_update_mode=='all':
+        elif args.server_update_mode == 'all':
             for name, param in model.named_parameters():
                 param.requires_grad = True
-        elif args.server_update_mode=='EBN':
+        elif args.server_update_mode == 'EBN':
             for name, param in model.named_parameters():
                 if 'bn' in name:
                     param.requires_grad = False
                 else:
                     param.requires_grad = True
-        elif args.server_update_mode=='linear':
+        elif args.server_update_mode == 'linear':
             for name, param in model.named_parameters():
                 if 'fc' in name or 'classifier' in name or 'linear' in name:
                     param.requires_grad = True
@@ -307,6 +313,7 @@ class Server(object):
                     param.requires_grad = False
 
         return model
+
     def create_clients(self, local_datasets):
         """Initialize each Client instance."""
         clients = []
@@ -401,14 +408,14 @@ class Server(object):
 
     def evaluate_selected_models(self):
         """Call "client_evaluate" function of each selected client."""
-        accs=[]
+        accs = []
         for idx in range(len(self.clients)):
             acc = self.clients[idx].client_evaluate()
             message = f"[Round: {str(self._round).zfill(4)}] ... clients{idx} are successfully evaluate! acc:{acc:.2f}%"
             show_info(message)
             accs.append(acc)
-        message= f"[Round: {str(self._round).zfill(4)}] ...{len(self.clients)} clients are " \
-                    f"successfully evaluate! acc:{np.mean(accs).item():.2f}%"
+        message = f"[Round: {str(self._round).zfill(4)}] ...{len(self.clients)} clients are " \
+                  f"successfully evaluate! acc:{np.mean(accs).item():.2f}%"
         show_info(message)
 
     def train_server_model(self):
@@ -428,7 +435,7 @@ class Server(object):
                 outputs = model(images)
                 loss = criterion(outputs, labels)
                 _, L = torch.max(outputs, dim=1)
-                acc = torch.sum(L == labels).float() / labels.size(0)*100
+                acc = torch.sum(L == labels).float() / labels.size(0) * 100
                 top1.update(acc.item(), images.size(0))
                 losses.update(loss.item(), images.size(0))
                 model.zero_grad()

@@ -17,6 +17,8 @@ from robustbench.model_zoo.enums import ThreatModel
 corruptions = [
     'gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur', 'motion_blur', 'zoom_blur', 'snow',
     'frost', 'fog', 'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+
+
 # corruptions=['gaussian_noise']
 
 
@@ -37,11 +39,12 @@ def get_args():
                         choices=[x.value for x in ThreatModel])
     parser.add_argument('--dataset',
                         type=str,
-                        default='cifar100',
+                        default='cifar10',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
     parser.add_argument('--algorithm', default='eata', type=str,
-                        choices=['source', 'norm', 'eata', 'tent', 'cotta', 'tent_ps', 'tent_psp', 'eata_m', 'ema'],
+                        choices=['source', 'norm', 'eata', 'tent', 'cotta', 'tent_ps', 'tent_psp', 'eata_m', 'ema',
+                                 'T3A'],
                         help='eata or eta or tent')
 
     # general parameters, dataloader parameters
@@ -102,7 +105,7 @@ def get_args():
     parser.add_argument('--server_epochs', default=1, type=int, help='number of total epochs to run on server')
     parser.add_argument('--server_batch_size', default=64, type=int, help='server batch size')
     parser.add_argument('--server_lr', default=5e-4, type=float, help='server learning rate')
-    parser.add_argument('--server_update_mode', default='BN', type=str, choices=['BN', 'EBN', 'all','linear'],
+    parser.add_argument('--server_update_mode', default='EBN', type=str, choices=['BN', 'EBN', 'all', 'linear'],
                         help='server update mode')
 
     # FedProx parameters

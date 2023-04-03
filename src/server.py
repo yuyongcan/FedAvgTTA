@@ -299,6 +299,12 @@ class Server(object):
                     param.requires_grad = False
                 else:
                     param.requires_grad = True
+        elif args.server_update_mode=='linear':
+            for name, param in model.named_parameters():
+                if 'fc' in name or 'classifier' in name or 'linear' in name:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
 
         return model
     def create_clients(self, local_datasets):
@@ -429,7 +435,7 @@ class Server(object):
                 loss.backward()
                 optimizer.step()
 
-                if idx % 5 == 0:
+                if idx % 20 == 0:
                     progress.display(idx + 1)
 
     def train_federated_model(self):
@@ -456,7 +462,7 @@ class Server(object):
             message = f"[Round: {str(self._round).zfill(4)}] ...updated weights of {len(self.clients)} clients are successfully averaged!"
             show_info(message)
 
-        if self.args.train_server:
+        if self.args.train_server and self.args.Federated:
             message = f"[Round: {str(self._round).zfill(4)}] Train server model...!"
             show_info(message)
 

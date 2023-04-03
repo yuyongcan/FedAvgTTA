@@ -53,7 +53,7 @@ class Tent(nn.Module):
         self.steps = new_steps
 
     def load_transmit(self,adapt_model):
-        args= self.args
+        # args= self.args
         model2=adapt_model.model
         for param1,param2 in zip(self.model.parameters(),model2.parameters()):
             if param2.requires_grad:

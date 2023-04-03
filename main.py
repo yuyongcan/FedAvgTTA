@@ -14,9 +14,10 @@ from src.server import Server
 
 from robustbench.model_zoo.enums import ThreatModel
 
-corruptions = [
-    'gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur', 'motion_blur', 'zoom_blur', 'snow',
-    'frost', 'fog', 'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+# corruptions = [
+#     'gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur', 'motion_blur', 'zoom_blur', 'snow',
+#     'frost', 'fog', 'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+corruptions=['gaussian_noise']
 
 
 def get_args():
@@ -36,7 +37,7 @@ def get_args():
                         choices=[x.value for x in ThreatModel])
     parser.add_argument('--dataset',
                         type=str,
-                        default='cifar10',
+                        default='imagenet',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
     parser.add_argument('--algorithm', default='tent', type=str,
@@ -90,19 +91,18 @@ def get_args():
     parser.add_argument('--ap', type=float, default=0.92)
 
     # FL parameters
-    parser.add_argument('--local_batches', default=50, type=int, help='corruption level of test(val) set.')
+    parser.add_argument('--local_batches', default=250, type=int, help='corruption level of test(val) set.')
     parser.add_argument('--Federated', default=True, type=bool, help='Federated test time adaptation or not')
     # parser.add_argument('--dataloder_path', default='./iter_dataloders', type=str, help='the path to save and load fixed dataloders')
     parser.add_argument('--Fed_algorithm', default='FedAvg', type=str, choices=['FedAvg', 'FedProx', 'FedBNM'],
                         help='the algorithm used for Federated Learning')
 
-
     # server training parameters
-    parser.add_argument('--train_server', default=True, type=bool, help='train the server model or not')
+    parser.add_argument('--train_server', default=False, type=bool, help='train the server model or not')
     parser.add_argument('--server_epochs', default=1, type=int, help='number of total epochs to run on server')
-    parser.add_argument('--server_batch_size', default=64, type=int, help='server batch size (default: 64)')
-    parser.add_argument('--server_lr', default=5e-4, type=float, help='server learning rate')
-    parser.add_argument('--server_update_mode', default='EBN', type=str, choices=['BN', 'EBN', 'all'],
+    parser.add_argument('--server_batch_size', default=64, type=int, help='server batch size')
+    parser.add_argument('--server_lr', default=1e-3, type=float, help='server learning rate')
+    parser.add_argument('--server_update_mode', default='linear', type=str, choices=['BN', 'EBN', 'all','linear'],
                         help='server update mode')
 
     # FedProx parameters
@@ -120,19 +120,13 @@ if __name__ == "__main__":
                                  str(args.Federated) + '_' + str(args.local_batches))
     if not os.path.exists(args.log_path):
         os.makedirs(args.log_path)
-    # initiate TensorBaord for tracking losses and metrics
-    # writer = SummaryWriter(log_dir=args.log_path, filename_suffix="FL")
-    # tb_thread = threading.Thread(
-    #     target=launch_tensor_board,
-    #     args=([log_config["log_path"], log_config["tb_port"], log_config["tb_host"]])
-    #     ).start()
-    # time.sleep(3.0)
 
     # set the configuration of global logger
     logger = logging.getLogger(__name__)
     logging.basicConfig(
         filename=os.path.join(args.log_path,
-                              str(datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")) + args.log_name),
+                              str(datetime.datetime.now().strftime(
+                                  "%Y-%m-%d_%H:%M:%S")) + args.server_update_mode + '_' + args.log_name),
         level=logging.INFO,
         format="[%(levelname)s](%(asctime)s) %(message)s",
         datefmt="%Y/%m/%d/ %I:%M:%S %p",
@@ -164,5 +158,4 @@ if __name__ == "__main__":
     message = "...done all learning process!\n...exit program!"
     print(message)
     logging.info(message)
-    # time.sleep(3);
     exit()

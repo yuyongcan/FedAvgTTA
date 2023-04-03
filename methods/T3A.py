@@ -11,8 +11,9 @@ class T3A(nn.Module):
 
     def __init__(self, num_classes,hparams,model):
         super().__init__()
-        self.featurizer = model.featurizer
-        self.classifier = model.classifier
+        modules= list(model.children())[:-1]
+        self.featurizer = nn.Sequential(*modules)
+        self.classifier = model.children()[-1]
 
         warmup_supports = self.classifier.weight.data
         self.warmup_supports = warmup_supports

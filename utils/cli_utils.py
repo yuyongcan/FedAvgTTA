@@ -42,6 +42,7 @@ class ProgressMeter(object):
         if self.logger is None:
             print('\t'.join(entries))
         else:
+            print('\t'.join(entries))
             self.logger.info('\t'.join(entries))
 
 

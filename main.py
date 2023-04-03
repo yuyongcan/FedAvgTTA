@@ -36,7 +36,7 @@ def get_args():
                         choices=[x.value for x in ThreatModel])
     parser.add_argument('--dataset',
                         type=str,
-                        default='imagenet',
+                        default='cifar10',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
     parser.add_argument('--algorithm', default='tent', type=str,
@@ -49,10 +49,6 @@ def get_args():
     parser.add_argument('--gpu', default='7', type=str, help='GPU id to use.')
     parser.add_argument('--workers', default=4, type=int, help='number of data loading workers (default: 4)')
     parser.add_argument('--batch_size', default=64, type=int, help='mini-batch size (default: 64)')
-
-    parser.add_argument('--server_epochs', default=1, type=int, help='number of total epochs to run on server')
-    parser.add_argument('--server_batch_size', default=64, type=int, help='server batch size (default: 64)')
-    parser.add_argument('--server_lr', default=5e-4, type=float, help='server learning rate')
 
     parser.add_argument('--if_shuffle', default=True, type=bool, help='if shuffle the test set.')
 
@@ -94,12 +90,20 @@ def get_args():
     parser.add_argument('--ap', type=float, default=0.92)
 
     # FL parameters
-    parser.add_argument('--local_batches', default=250, type=int, help='corruption level of test(val) set.')
+    parser.add_argument('--local_batches', default=50, type=int, help='corruption level of test(val) set.')
     parser.add_argument('--Federated', default=True, type=bool, help='Federated test time adaptation or not')
     # parser.add_argument('--dataloder_path', default='./iter_dataloders', type=str, help='the path to save and load fixed dataloders')
     parser.add_argument('--Fed_algorithm', default='FedAvg', type=str, choices=['FedAvg', 'FedProx', 'FedBNM'],
                         help='the algorithm used for Federated Learning')
+
+
+    # server training parameters
     parser.add_argument('--train_server', default=True, type=bool, help='train the server model or not')
+    parser.add_argument('--server_epochs', default=1, type=int, help='number of total epochs to run on server')
+    parser.add_argument('--server_batch_size', default=64, type=int, help='server batch size (default: 64)')
+    parser.add_argument('--server_lr', default=5e-4, type=float, help='server learning rate')
+    parser.add_argument('--server_update_mode', default='EBN', type=str, choices=['BN', 'EBN', 'all'],
+                        help='server update mode')
 
     # FedProx parameters
     parser.add_argument('--mu', default=0.01, type=float,

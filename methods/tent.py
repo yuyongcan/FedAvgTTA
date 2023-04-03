@@ -52,11 +52,17 @@ class Tent(nn.Module):
     def reset_steps(self, new_steps):
         self.steps = new_steps
 
+    def load_transmit(self,adapt_model):
+        args= self.args
+        model2=adapt_model.model
+        for param1,param2 in zip(self.model.parameters(),model2.parameters()):
+            if param2.requires_grad:
+                param1.data=param2.data.clone()
     def transmit(self, adapt_model):
         if self.args.Fed_algorithm == 'FedAvg':
-            self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
+            self.load_transmit(adapt_model)
         elif self.args.Fed_algorithm == 'FedProx':
-            self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
+            self.load_transmit(adapt_model)
             self.global_model = adapt_model.model
 
     def to(self,device):

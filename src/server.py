@@ -7,6 +7,7 @@ from torch import optim
 from tqdm.auto import tqdm
 from collections import OrderedDict
 
+from utils.cli_utils import AverageMeter, ProgressMeter
 from .data import load_server_data
 # from .models import *
 from .utils import *
@@ -22,7 +23,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-datasets_path = {'imagenet': '/data2/yongcan.yu/datasets/imagenet',
+datasets_path = {'imagenet': '/data2/yongcan.yu/datasets/ImageNet',
                  'cifar10': '/data2/yongcan.yu/datasets',
                  'cifar100': "/data2/yongcan.yu/datasets"}
 
@@ -280,6 +281,26 @@ class Server(object):
         # send the model skeleton to all clients
         self.transmit_model(init=True)
 
+    def configure_model(self, model):
+        """Configure model for federated learning."""
+        args=self.args
+        if args.server_update_mode=='BN':
+            for name, param in model.named_parameters():
+                if 'bn' in name:
+                    param.requires_grad = True
+                else:
+                    param.requires_grad = False
+        elif args.server_update_mode=='all':
+            for name, param in model.named_parameters():
+                param.requires_grad = True
+        elif args.server_update_mode=='EBN':
+            for name, param in model.named_parameters():
+                if 'bn' in name:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
+
+        return model
     def create_clients(self, local_datasets):
         """Initialize each Client instance."""
         clients = []
@@ -388,21 +409,28 @@ class Server(object):
         """Do training on the server model."""
         dataset, dataloader = load_server_data(self.args)
         model = self.adapt_model.model
+        self.configure_model(model)
         criterion = nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD([param for param in model.parameters() if param.requires_grad],
                                     lr=self.args.server_lr, momentum=0.9)
+        top1 = AverageMeter('Acc@1', ':6.2f')
+        losses = AverageMeter('loss@1', ':6.2f')
+        progress = ProgressMeter(len(dataloader), [losses, top1], prefix="train on server: ", logger=logger)
         for epoch in range(self.args.server_epochs):
             for idx, (images, labels) in enumerate(dataloader):
                 images, labels = images.to(self.device), labels.to(self.device)
                 outputs = model(images)
                 loss = criterion(outputs, labels)
+                _, L = torch.max(outputs, dim=1)
+                acc = torch.sum(L == labels).float() / labels.size(0)*100
+                top1.update(acc.item(), images.size(0))
+                losses.update(loss.item(), images.size(0))
                 model.zero_grad()
                 loss.backward()
                 optimizer.step()
 
-                if idx % 100 == 0:
-                    message=f"Epoch: {epoch}, Batch: {idx}, Loss: {loss.item():.4f}"
-                    show_info(message)
+                if idx % 5 == 0:
+                    progress.display(idx + 1)
 
     def train_federated_model(self):
         """Do federated training."""

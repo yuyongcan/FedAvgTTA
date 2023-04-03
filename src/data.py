@@ -25,7 +25,7 @@ PREPROCESSINGS = {
     'none': transforms.Compose([transforms.ToTensor()]),
 }
 
-datasets_path = {'imagenet': '/data2/yongcan.yu/datasets/imagenet',
+datasets_path = {'imagenet': '/data2/yongcan.yu/datasets/ImageNet',
                  'cifar10': '/data2/yongcan.yu/datasets',
                  'cifar100': "/data2/yongcan.yu/datasets"}
 
@@ -72,11 +72,13 @@ def load_server_data(args):
     elif args.dataset == 'cifar100':
         trainset = datasets.CIFAR100(root=datasets_path['cifar100'], train=True, download=True, transform=train_transforms['cifar100'])
     elif args.dataset == 'imagenet':
-        trainset = torchvision.datasets.ImageNet(root=datasets_path['imagenet'], split='val',
-                                                transform=te_transforms)
+        trainset = torchvision.datasets.ImageNet(root=datasets_path['imagenet'], split='train',
+                                                transform=train_transforms['imagenet'])
+        idx = torch.randperm(len(trainset))[:150000]
+        trainset = torch.utils.data.Subset(trainset, idx)
     else:
         raise NotImplementedError
-    dataloader = data.DataLoader(trainset, batch_size=args.server_batch_size, shuffle=True, num_workers=4)
+    dataloader = data.DataLoader(trainset, batch_size=args.server_batch_size, shuffle=True, num_workers=4, pin_memory=True)
     return trainset, dataloader
 
 

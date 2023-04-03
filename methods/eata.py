@@ -56,7 +56,7 @@ class EATA(nn.Module):
                                                                                             self.current_model_probs,
                                                                                             fisher_alpha=self.fisher_alpha,
                                                                                             num_samples_update=self.num_samples_update_2,
-                                                                                            d_margin=self.d_margin,\
+                                                                                            d_margin=self.d_margin, \
                                                                                             args=self.args,
                                                                                             global_model=self.global_model)
                 self.num_samples_update_2 += num_counts_2

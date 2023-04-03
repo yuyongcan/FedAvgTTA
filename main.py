@@ -14,10 +14,10 @@ from src.server import Server
 
 from robustbench.model_zoo.enums import ThreatModel
 
-# corruptions = [
-#     'gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur', 'motion_blur', 'zoom_blur', 'snow',
-#     'frost', 'fog', 'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
-corruptions=['gaussian_noise']
+corruptions = [
+    'gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur', 'motion_blur', 'zoom_blur', 'snow',
+    'frost', 'fog', 'brightness', 'contrast', 'elastic_transform', 'pixelate', 'jpeg_compression']
+# corruptions=['gaussian_noise']
 
 
 def get_args():
@@ -37,10 +37,10 @@ def get_args():
                         choices=[x.value for x in ThreatModel])
     parser.add_argument('--dataset',
                         type=str,
-                        default='imagenet',
+                        default='cifar10',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
-    parser.add_argument('--algorithm', default='tent', type=str,
+    parser.add_argument('--algorithm', default='eata', type=str,
                         choices=['source', 'norm', 'eata', 'tent', 'cotta', 'tent_ps', 'tent_psp', 'eata_m', 'ema'],
                         help='eata or eta or tent')
 
@@ -91,18 +91,18 @@ def get_args():
     parser.add_argument('--ap', type=float, default=0.92)
 
     # FL parameters
-    parser.add_argument('--local_batches', default=250, type=int, help='corruption level of test(val) set.')
+    parser.add_argument('--local_batches', default=50, type=int, help='corruption level of test(val) set.')
     parser.add_argument('--Federated', default=True, type=bool, help='Federated test time adaptation or not')
     # parser.add_argument('--dataloder_path', default='./iter_dataloders', type=str, help='the path to save and load fixed dataloders')
     parser.add_argument('--Fed_algorithm', default='FedAvg', type=str, choices=['FedAvg', 'FedProx', 'FedBNM'],
                         help='the algorithm used for Federated Learning')
 
     # server training parameters
-    parser.add_argument('--train_server', default=False, type=bool, help='train the server model or not')
+    parser.add_argument('--train_server', default=True, type=bool, help='train the server model or not')
     parser.add_argument('--server_epochs', default=1, type=int, help='number of total epochs to run on server')
     parser.add_argument('--server_batch_size', default=64, type=int, help='server batch size')
-    parser.add_argument('--server_lr', default=1e-3, type=float, help='server learning rate')
-    parser.add_argument('--server_update_mode', default='linear', type=str, choices=['BN', 'EBN', 'all','linear'],
+    parser.add_argument('--server_lr', default=5e-4, type=float, help='server learning rate')
+    parser.add_argument('--server_update_mode', default='BN', type=str, choices=['BN', 'EBN', 'all','linear'],
                         help='server update mode')
 
     # FedProx parameters
@@ -137,6 +137,7 @@ if __name__ == "__main__":
     print(message);
     logging.info(message)
 
+    print(args)
     logger.info(args)
 
     # for config in configs:

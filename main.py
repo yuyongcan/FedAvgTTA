@@ -24,7 +24,8 @@ def get_args():
     parser.add_argument('--imagenetc_dir', default='/data2/yongcan.yu/datasets/ImageNet-C',
                         help='the dir of imagenetc dataset')
     # parser.add_argument('--imagenetc_mode', default='full', choices=['full', 'part'])
-    parser.add_argument('--corruptions_type', default='others', type=str, choices=['noise','blur', 'weather','others', 'all'])
+    parser.add_argument('--corruptions_type', default='others', type=str,
+                        choices=['noise', 'blur', 'weather', 'others', 'all'])
     parser.add_argument('--ckpt_dir', default='./ckpt', help='the path of model to download and load')
     parser.add_argument('--output', default='./output/', help='the output directory of this experiment')
     parser.add_argument('--threat_model',
@@ -33,7 +34,7 @@ def get_args():
                         choices=[x.value for x in ThreatModel])
     parser.add_argument('--dataset',
                         type=str,
-                        default='cifar10',
+                        default='cifar100',
                         choices=['cifar10', 'cifar100', 'imagenet'])
     # method
     parser.add_argument('--algorithm', default='eata', type=str,
@@ -88,14 +89,14 @@ def get_args():
     parser.add_argument('--ap', type=float, default=0.92)
 
     # FL parameters
-    parser.add_argument('--Federated', default=False, type=bool, help='Federated test time adaptation or not')
-    parser.add_argument('--num_clients', default=15, type=int, help='number of clients')
+    parser.add_argument('--Federated', default=True, type=bool, help='Federated test time adaptation or not')
+    parser.add_argument('--num_clients', default=1, type=int, help='number of clients')
     parser.add_argument('--local_batches', default=50, type=int, help='corruption level of test(val) set.')
     parser.add_argument('--Fed_algorithm', default='FedAvg', type=str, choices=['FedAvg', 'FedProx', 'FedBNM'],
                         help='the algorithm used for Federated Learning')
 
     # server training parameters
-    parser.add_argument('--train_server', default=False, type=bool, help='train the server model or not')
+    parser.add_argument('--train_server', default=True, type=bool, help='train the server model or not')
     parser.add_argument('--server_epochs', default=1, type=int, help='number of total epochs to run on server')
     parser.add_argument('--server_batch_size', default=64, type=int, help='server batch size')
     parser.add_argument('--server_lr', default=5e-4, type=float, help='server learning rate')
@@ -141,32 +142,32 @@ if __name__ == "__main__":
     #     print(config); logging.info(config)
     print()
     # [0:3] [3:7] [7:11] [11:15]
-    if args.corruptions_type == 'noise':
-        args.common_corruptions = corruptions[0:3]
-    elif args.corruptions_type == 'blur':
-        args.common_corruptions = corruptions[3:7]
-    elif args.corruptions_type == 'weather':
-        args.common_corruptions = corruptions[7:11]
-    elif args.corruptions_type == 'others':
-        args.common_corruptions = corruptions[11:15]
-    elif args.corruptions_type == 'all':
-        args.common_corruptions = corruptions
+    # if args.corruptions_type == 'noise':
+    #     args.common_corruptions = corruptions[0:3]
+    # elif args.corruptions_type == 'blur':
+    #     args.common_corruptions = corruptions[3:7]
+    # elif args.corruptions_type == 'weather':
+    #     args.common_corruptions = corruptions[7:11]
+    # elif args.corruptions_type == 'others':
+    #     args.common_corruptions = corruptions[11:15]
+    # elif args.corruptions_type == 'all':
+    #     args.common_corruptions = corruptions
     # args.common_corruptions = corruptions[11:15]
     print(args)
     logger.info(args)
 
-    # initialize federated learning
-    central_server = Server(args)
-    central_server.setup()
-    # do federated learning
-    central_server.fit()
+    # # initialize federated learning
+    # central_server = Server(args)
+    # central_server.setup()
+    # # do federated learning
+    # central_server.fit()
 
-    # epochs = len(corruptions)//args.num_clients
-    # for i in range(epochs):
-    #     args.common_corruptions = corruptions[i*args.num_clients:(i+1)*args.num_clients]
-    #     central_server = Server(args)
-    #     central_server.setup()
-    #     central_server.fit()
+    epochs = len(corruptions)//args.num_clients
+    for i in range(epochs):
+        args.common_corruptions = corruptions[i*args.num_clients:(i+1)*args.num_clients]
+        central_server = Server(args)
+        central_server.setup()
+        central_server.fit()
 
     # for i in range(len(corruptions)):
     #     args.common_corruptions = [corruptions[i]]

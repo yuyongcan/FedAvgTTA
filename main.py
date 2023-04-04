@@ -1,18 +1,11 @@
-import os
-import time
-import datetime
-import pickle
-import threading
-import logging
 import argparse
-
+import datetime
+import logging
 import math
-import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
-
-from src.server import Server
+import os
 
 from robustbench.model_zoo.enums import ThreatModel
+from src.server import Server
 
 corruptions = [
     'gaussian_noise', 'shot_noise', 'impulse_noise', 'defocus_blur', 'glass_blur', 'motion_blur', 'zoom_blur', 'snow',
@@ -31,6 +24,7 @@ def get_args():
     parser.add_argument('--imagenetc_dir', default='/data2/yongcan.yu/datasets/ImageNet-C',
                         help='the dir of imagenetc dataset')
     # parser.add_argument('--imagenetc_mode', default='full', choices=['full', 'part'])
+    parser.add_argument('--corruptions_type', default='others', type=str, choices=['noise','blur', 'weather','others', 'all'])
     parser.add_argument('--ckpt_dir', default='./ckpt', help='the path of model to download and load')
     parser.add_argument('--output', default='./output/', help='the output directory of this experiment')
     parser.add_argument('--threat_model',
@@ -94,14 +88,14 @@ def get_args():
     parser.add_argument('--ap', type=float, default=0.92)
 
     # FL parameters
+    parser.add_argument('--Federated', default=False, type=bool, help='Federated test time adaptation or not')
+    parser.add_argument('--num_clients', default=15, type=int, help='number of clients')
     parser.add_argument('--local_batches', default=50, type=int, help='corruption level of test(val) set.')
-    parser.add_argument('--Federated', default=True, type=bool, help='Federated test time adaptation or not')
-    # parser.add_argument('--dataloder_path', default='./iter_dataloders', type=str, help='the path to save and load fixed dataloders')
     parser.add_argument('--Fed_algorithm', default='FedAvg', type=str, choices=['FedAvg', 'FedProx', 'FedBNM'],
                         help='the algorithm used for Federated Learning')
 
     # server training parameters
-    parser.add_argument('--train_server', default=True, type=bool, help='train the server model or not')
+    parser.add_argument('--train_server', default=False, type=bool, help='train the server model or not')
     parser.add_argument('--server_epochs', default=1, type=int, help='number of total epochs to run on server')
     parser.add_argument('--server_batch_size', default=64, type=int, help='server batch size')
     parser.add_argument('--server_lr', default=5e-4, type=float, help='server learning rate')
@@ -140,19 +134,45 @@ if __name__ == "__main__":
     print(message);
     logging.info(message)
 
-    print(args)
-    logger.info(args)
+    # print(args)
+    # logger.info(args)
 
     # for config in configs:
     #     print(config); logging.info(config)
     print()
+    # [0:3] [3:7] [7:11] [11:15]
+    if args.corruptions_type == 'noise':
+        args.common_corruptions = corruptions[0:3]
+    elif args.corruptions_type == 'blur':
+        args.common_corruptions = corruptions[3:7]
+    elif args.corruptions_type == 'weather':
+        args.common_corruptions = corruptions[7:11]
+    elif args.corruptions_type == 'others':
+        args.common_corruptions = corruptions[11:15]
+    elif args.corruptions_type == 'all':
+        args.common_corruptions = corruptions
+    # args.common_corruptions = corruptions[11:15]
+    print(args)
+    logger.info(args)
 
-    # initialize federated learning 
+    # initialize federated learning
     central_server = Server(args)
     central_server.setup()
-
     # do federated learning
     central_server.fit()
+
+    # epochs = len(corruptions)//args.num_clients
+    # for i in range(epochs):
+    #     args.common_corruptions = corruptions[i*args.num_clients:(i+1)*args.num_clients]
+    #     central_server = Server(args)
+    #     central_server.setup()
+    #     central_server.fit()
+
+    # for i in range(len(corruptions)):
+    #     args.common_corruptions = [corruptions[i]]
+    #     central_server = Server(args)
+    #     central_server.setup()
+    #     central_server.fit()
 
     # save resulting losses and metrics
     # with open(os.path.join(log_config["log_path"], "result.pkl"), "wb") as f:

@@ -1,11 +1,3 @@
-import torch
-import torchvision
-import copy
-from main import get_args
-from robustbench import load_model
-from robustbench.model_zoo.enums import ThreatModel
-from src.data import datasets_path, te_transforms
-
 # args=get_args()
 #
 # if args.dataset == 'imagenet':
@@ -31,6 +23,6 @@ from src.data import datasets_path, te_transforms
 # idx = torch.randperm(length)[:150000]
 # trainset = torch.utils.data.Subset(trainset, idx)
 
-x=torch.randn((1,2),requires_grad=True)
-y=x+1
-print(1)
+a = [1, 2, 3]
+b = a[0:1]
+print(b)

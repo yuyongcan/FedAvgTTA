@@ -134,14 +134,21 @@ class CoTTA(nn.Module):
                             p.data = self.model_state[f"{nm}.{npp}"] * mask + p * (1. - mask)
         return outputs_ema
 
+    def load_transmit(self, adapt_model):
+        # args= self.args
+        model2 = adapt_model.model
+        model_ema_2= adapt_model.model_ema
+        for param1, param2,ema_param,ema_param_2 in zip(self.model.parameters(), model2.parameters(),self.model_ema.parameters(),model_ema_2.parameters()):
+            if param2.requires_grad:
+                param1.data = param2.data.clone()
+                ema_param.data = ema_param_2.data.clone()
+
     def transmit(self, adapt_model):
         if self.args.Fed_algorithm == 'FedAvg':
-            self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
-            self.model_ema.load_state_dict(deepcopy(adapt_model.model_ema.state_dict()))
+            self.load_transmit(adapt_model)
 
         elif self.args.Fed_algorithm == 'FedProx':
-            self.model.load_state_dict(deepcopy(adapt_model.model.state_dict()))
-            self.model_ema.load_state_dict(deepcopy(adapt_model.model_ema.state_dict()))
+            self.load_transmit(adapt_model)
             self.global_model = adapt_model.model
 
     def to(self, device):
